@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid';
+import { Configuration, PlaidApi, PlaidEnvironments, CountryCode } from 'plaid';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -19,7 +19,7 @@ async function testSupabase() {
     const supabase = createClient(url, key);
 
     // Test by querying the profiles table (or any table)
-    const { data, error } = await supabase.from('profiles').select('count').limit(1);
+    const { data: _data, error } = await supabase.from('profiles').select('count').limit(1);
 
     if (error) {
       // Table might not exist yet, but connection works
@@ -68,7 +68,7 @@ async function testPlaid() {
     const response = await plaidClient.institutionsGet({
       count: 1,
       offset: 0,
-      country_codes: ['US'],
+      country_codes: [CountryCode.Us],
     });
 
     if (response.data.institutions.length > 0) {

@@ -1,13 +1,86 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useState, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { create, open, dismissLink, LinkSuccess, LinkExit } from 'react-native-plaid-link-sdk';
+import { useAuthStore } from '@/stores/authStore';
+import { apiClient } from '@/services/api/client';
 
 export default function ConnectBankScreen() {
+  const [isLoading, setIsLoading] = useState(false);
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const { isAuthenticated } = useAuthStore();
+
+  // Fetch link token when component mounts
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchLinkToken();
+    }
+  }, [isAuthenticated]);
+
+  const fetchLinkToken = async () => {
+    try {
+      const response = await apiClient.post('/plaid/link-token');
+      const token = response.data.data.linkToken;
+      setLinkToken(token);
+
+      // Create the link configuration
+      create({ token });
+    } catch (error) {
+      console.error('Failed to fetch link token:', error);
+    }
+  };
+
+  const handleSuccess = useCallback(async (success: LinkSuccess) => {
+    setIsLoading(true);
+    try {
+      // Exchange public token for access token
+      await apiClient.post('/plaid/exchange-token', {
+        publicToken: success.publicToken,
+      });
+
+      // Sync transactions
+      await apiClient.post('/plaid/sync');
+
+      Alert.alert('Success', 'Bank account connected successfully!', [
+        { text: 'Continue', onPress: () => router.push('/(onboarding)/connect-brokerage') },
+      ]);
+    } catch (error) {
+      console.error('Failed to exchange token:', error);
+      Alert.alert('Error', 'Failed to connect bank account. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const handleExit = useCallback((exit: LinkExit) => {
+    console.log('Plaid Link exited:', exit);
+    if (exit.error) {
+      Alert.alert('Connection Failed', exit.error.displayMessage || 'Please try again.');
+    }
+    dismissLink();
+  }, []);
+
   const handleConnectBank = async () => {
-    // TODO: Implement Plaid Link
-    // For now, skip to next step
-    router.push('/(onboarding)/connect-brokerage');
+    if (!linkToken) {
+      Alert.alert('Please wait', 'Setting up secure connection...');
+      await fetchLinkToken();
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      open({
+        onSuccess: handleSuccess,
+        onExit: handleExit,
+      });
+    } catch (error) {
+      console.error('Failed to open Plaid Link:', error);
+      Alert.alert('Error', 'Failed to open bank connection. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -49,13 +122,22 @@ export default function ConnectBankScreen() {
       </View>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.button} onPress={handleConnectBank}>
-          <Text style={styles.buttonText}>Connect Bank Account</Text>
+        <TouchableOpacity
+          style={[styles.button, isLoading && styles.buttonDisabled]}
+          onPress={handleConnectBank}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Connect Bank Account</Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.skipButton}
           onPress={() => router.push('/(onboarding)/connect-brokerage')}
+          disabled={isLoading}
         >
           <Text style={styles.skipText}>Skip for now</Text>
         </TouchableOpacity>
@@ -124,6 +206,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 18,
     alignItems: 'center',
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: '#fff',

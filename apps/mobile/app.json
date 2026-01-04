@@ -16,7 +16,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.owninstead.app",
-      "associatedDomains": ["applinks:owninstead.com"]
+      "associatedDomains": ["applinks:owninstead.com"],
+      "deploymentTarget": "14.0"
     },
     "android": {
       "adaptiveIcon": {
