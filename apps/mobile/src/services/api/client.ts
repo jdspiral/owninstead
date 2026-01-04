@@ -1,6 +1,8 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig, AxiosError } from 'axios';
 import Constants from 'expo-constants';
-import { useAuthStore } from '@/stores/authStore';
+
+// Lazy import to break circular dependency
+const getAuthStore = () => require('@/stores/authStore').useAuthStore;
 
 const API_URL = Constants.expoConfig?.extra?.apiUrl || process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -16,7 +18,7 @@ const createApiClient = (): AxiosInstance => {
   // Request interceptor - attach auth token
   client.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
-      const session = useAuthStore.getState().session;
+      const session = getAuthStore().getState().session;
       if (session?.accessToken) {
         config.headers.Authorization = `Bearer ${session.accessToken}`;
       }
@@ -35,7 +37,7 @@ const createApiClient = (): AxiosInstance => {
         originalRequest._retry = true;
 
         try {
-          const session = useAuthStore.getState().session;
+          const session = getAuthStore().getState().session;
           if (!session?.refreshToken) {
             throw new Error('No refresh token');
           }
@@ -48,7 +50,7 @@ const createApiClient = (): AxiosInstance => {
             const newSession = response.data.data.session;
 
             // Update store with new tokens
-            useAuthStore.setState({
+            getAuthStore().setState({
               session: {
                 accessToken: newSession.access_token,
                 refreshToken: newSession.refresh_token,
@@ -61,7 +63,7 @@ const createApiClient = (): AxiosInstance => {
           }
         } catch (refreshError) {
           // Refresh failed, logout user
-          useAuthStore.getState().logout();
+          getAuthStore().getState().logout();
           return Promise.reject(refreshError);
         }
       }

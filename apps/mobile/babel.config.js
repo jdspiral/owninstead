@@ -6,9 +6,10 @@ module.exports = function (api) {
       [
         'module-resolver',
         {
-          root: ['./src'],
+          root: ['.'],
           alias: {
             '@': './src',
+            '@app': './app',
           },
           extensions: [
             '.ios.js',
