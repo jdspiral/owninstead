@@ -4,7 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-OwnInstead is a behavior-triggered investing app. When users spend less than their targets on specified categories, the app automatically invests the difference via their brokerage account.
+OwnInstead is a behavior-triggered investing app that turns reduced spending into automatic investments.
+
+### Core Concept
+
+Users declare spending behaviors they want to reduce (e.g., food delivery, coffee shops, rideshares). They set a weekly spending target for each category. If they come in under target, the app automatically invests the savings via their existing brokerage account.
+
+**Example flow:**
+1. User sets a $50/week target for food delivery
+2. User only spends $30 that week
+3. App detects the $20 savings and (with user confirmation) invests it in their chosen ETF
+
+### Key Domain Concepts
+
+- **Rules**: User-defined spending targets for categories (e.g., "Spend less than $50/week on delivery")
+- **Evaluations**: Weekly assessments comparing actual spend vs target, calculating investment amount
+- **Orders**: Trade executions triggered by confirmed evaluations
+- **Streaks**: Consecutive weeks of beating targets (can trigger bonus investments)
+
+### Product Positioning
+
+- NOT a robo-advisor or budgeting app
+- Users authorize all trades; app automates rules they create
+- App never holds money; trades execute through user's existing brokerage
+- First trade always requires manual confirmation
 
 ## Commands
 

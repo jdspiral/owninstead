@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { env } from '../config/env.js';
 
-// Service role client for backend operations
-export const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY, {
+// Secret key client for backend operations (bypasses RLS)
+export const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
@@ -11,7 +11,7 @@ export const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY,
 
 // Create a client with user's JWT for authenticated requests
 export function createUserClient(jwt: string) {
-  return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY, {
+  return createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
     global: {
       headers: {
         Authorization: `Bearer ${jwt}`,

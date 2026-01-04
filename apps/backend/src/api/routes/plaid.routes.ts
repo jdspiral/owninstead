@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { ERROR_CODES } from '@owninstead/shared';
+import { plaidService } from '../../services/plaid.js';
 
 export const plaidRoutes = Router();
 
@@ -11,17 +12,13 @@ plaidRoutes.use(authMiddleware);
 // Generate link token
 plaidRoutes.post('/link-token', async (req, res, next) => {
   try {
-    const { userId: _userId } = req as AuthenticatedRequest;
+    const { userId } = req as AuthenticatedRequest;
 
-    // TODO: Implement Plaid link token generation
-    // const plaidClient = getPlaidClient();
-    // const response = await plaidClient.linkTokenCreate({...});
+    const linkToken = await plaidService.createLinkToken(userId);
 
     res.json({
       success: true,
-      data: {
-        linkToken: 'TODO_IMPLEMENT_PLAID',
-      },
+      data: { linkToken },
     });
   } catch (error) {
     next(error);
@@ -31,20 +28,20 @@ plaidRoutes.post('/link-token', async (req, res, next) => {
 // Exchange public token
 plaidRoutes.post('/exchange-token', async (req, res, next) => {
   try {
-    const { userId: _userId } = req as AuthenticatedRequest;
+    const { userId } = req as AuthenticatedRequest;
     const { publicToken } = req.body;
 
     if (!publicToken) {
       throw new AppError(ERROR_CODES.VALIDATION_ERROR, 400, 'publicToken is required');
     }
 
-    // TODO: Implement Plaid token exchange
-    // const response = await plaidClient.itemPublicTokenExchange({ public_token: publicToken });
-    // Store access_token in plaid_connections
+    const result = await plaidService.exchangePublicToken(userId, publicToken);
 
     res.json({
       success: true,
       data: {
+        itemId: result.itemId,
+        institutionName: result.institutionName,
         message: 'Bank account connected successfully',
       },
     });
@@ -56,17 +53,50 @@ plaidRoutes.post('/exchange-token', async (req, res, next) => {
 // Sync transactions
 plaidRoutes.post('/sync', async (req, res, next) => {
   try {
-    const { userId: _userId } = req as AuthenticatedRequest;
+    const { userId } = req as AuthenticatedRequest;
 
-    // TODO: Implement Plaid transaction sync
-    // Fetch transactions from Plaid and store in transactions table
+    const result = await plaidService.syncTransactions(userId);
 
     res.json({
       success: true,
       data: {
-        synced: 0,
+        synced: result.synced,
+        accounts: result.accounts,
         message: 'Transactions synced successfully',
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get connection status
+plaidRoutes.get('/status', async (req, res, next) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+
+    const status = await plaidService.getConnectionStatus(userId);
+
+    res.json({
+      success: true,
+      data: status,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Remove a connection
+plaidRoutes.delete('/connections/:connectionId', async (req, res, next) => {
+  try {
+    const { userId } = req as unknown as AuthenticatedRequest;
+    const { connectionId } = req.params;
+
+    await plaidService.removeConnection(userId, connectionId);
+
+    res.json({
+      success: true,
+      data: { message: 'Connection removed successfully' },
     });
   } catch (error) {
     next(error);

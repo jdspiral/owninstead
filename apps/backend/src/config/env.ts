@@ -10,7 +10,7 @@ const envSchema = z.object({
 
   // Supabase
   SUPABASE_URL: z.string().url(),
-  SUPABASE_SERVICE_KEY: z.string().min(1),
+  SUPABASE_SECRET_KEY: z.string().min(1),
 
   // Redis (optional for local dev)
   REDIS_URL: z.string().url().optional(),
