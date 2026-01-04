@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+.expo/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+coverage/
+.nyc_output/
+
+# Turbo
+.turbo/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Mobile specific
+ios/
+android/
+*.ipa
+*.apk
+*.aab
+
+# Supabase
+supabase/.branches/
+supabase/.temp/
