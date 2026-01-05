@@ -3,9 +3,24 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } fr
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { create, open, dismissLink, LinkSuccess, LinkExit } from 'react-native-plaid-link-sdk';
+import Constants from 'expo-constants';
 import { useAuthStore } from '@/stores/authStore';
 import { apiClient } from '@/services/api/client';
+
+// Use mock in Expo Go, real SDK in development builds
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// Conditional imports
+import * as MockPlaid from '@/mocks/plaid-link';
+import * as RealPlaid from 'react-native-plaid-link-sdk';
+
+// Use real SDK for dev builds, mock for Expo Go
+const PlaidSDK = isExpoGo ? MockPlaid : RealPlaid;
+
+type LinkSuccess = MockPlaid.LinkSuccess;
+type LinkExit = MockPlaid.LinkExit;
+
+const { create, open, dismissLink } = PlaidSDK as typeof MockPlaid;
 
 export default function ConnectBankScreen() {
   const [isLoading, setIsLoading] = useState(false);

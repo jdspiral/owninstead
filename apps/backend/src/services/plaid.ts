@@ -46,6 +46,11 @@ export class PlaidService {
     userId: string,
     publicToken: string
   ): Promise<{ itemId: string; institutionName: string | null }> {
+    // Handle mock tokens for testing
+    if (publicToken.startsWith('mock-public-token-')) {
+      return this.createMockConnection(userId);
+    }
+
     // Exchange public token for access token
     const exchangeResponse = await plaidClient.itemPublicTokenExchange({
       public_token: publicToken,
@@ -81,6 +86,30 @@ export class PlaidService {
     }
 
     logger.info({ userId, itemId, institutionName }, 'Plaid connection stored');
+    return { itemId, institutionName };
+  }
+
+  /**
+   * Create a mock connection for testing in Expo Go
+   */
+  private async createMockConnection(userId: string): Promise<{ itemId: string; institutionName: string | null }> {
+    const itemId = 'mock-item-' + Date.now();
+    const institutionName = 'Mock Bank (Testing)';
+
+    // Store mock connection
+    const { error } = await supabase.from('plaid_connections').insert({
+      user_id: userId,
+      access_token: 'mock-access-token-' + Date.now(),
+      item_id: itemId,
+      institution_name: institutionName,
+    });
+
+    if (error) {
+      logger.error({ error, userId }, 'Failed to store mock Plaid connection');
+      throw new Error('Failed to store bank connection');
+    }
+
+    logger.info({ userId, itemId }, 'Created mock Plaid connection');
     return { itemId, institutionName };
   }
 
@@ -126,6 +155,11 @@ export class PlaidService {
     userId: string,
     connection: { id: string; access_token: string; item_id: string }
   ): Promise<number> {
+    // Handle mock connections
+    if (connection.access_token.startsWith('mock-access-token-')) {
+      return this.createMockTransactions(userId);
+    }
+
     // Get transactions from the last 30 days
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 30);
@@ -169,6 +203,66 @@ export class PlaidService {
       'Synced transactions'
     );
 
+    return synced;
+  }
+
+  /**
+   * Create sample mock transactions for testing
+   */
+  private async createMockTransactions(userId: string): Promise<number> {
+    const today = new Date();
+    const mockTransactions = [
+      // Delivery - spread across the week
+      { merchant: 'DoorDash', amount: 28.50, category: ['Food and Drink', 'Restaurants', 'Fast Food'], daysAgo: 1 },
+      { merchant: 'Uber Eats', amount: 32.00, category: ['Food and Drink', 'Restaurants'], daysAgo: 3 },
+      { merchant: 'Grubhub', amount: 24.75, category: ['Food and Drink', 'Restaurants'], daysAgo: 5 },
+
+      // Coffee
+      { merchant: 'Starbucks', amount: 6.45, category: ['Food and Drink', 'Coffee Shop'], daysAgo: 0 },
+      { merchant: 'Starbucks', amount: 5.95, category: ['Food and Drink', 'Coffee Shop'], daysAgo: 2 },
+      { merchant: 'Starbucks', amount: 7.20, category: ['Food and Drink', 'Coffee Shop'], daysAgo: 4 },
+      { merchant: 'Blue Bottle Coffee', amount: 8.50, category: ['Food and Drink', 'Coffee Shop'], daysAgo: 6 },
+
+      // Rideshare
+      { merchant: 'Uber', amount: 18.50, category: ['Travel', 'Taxi'], daysAgo: 2 },
+      { merchant: 'Lyft', amount: 22.00, category: ['Travel', 'Taxi'], daysAgo: 4 },
+
+      // Entertainment
+      { merchant: 'Netflix', amount: 15.99, category: ['Service', 'Subscription'], daysAgo: 7 },
+      { merchant: 'Spotify', amount: 10.99, category: ['Service', 'Subscription'], daysAgo: 7 },
+
+      // Shopping
+      { merchant: 'Amazon', amount: 45.99, category: ['Shops', 'Online Marketplace'], daysAgo: 3 },
+      { merchant: 'Target', amount: 67.32, category: ['Shops', 'Supermarkets and Groceries'], daysAgo: 5 },
+
+      // Groceries
+      { merchant: 'Whole Foods', amount: 89.45, category: ['Shops', 'Supermarkets and Groceries'], daysAgo: 1 },
+      { merchant: 'Trader Joes', amount: 52.18, category: ['Shops', 'Supermarkets and Groceries'], daysAgo: 6 },
+    ];
+
+    let synced = 0;
+    for (const tx of mockTransactions) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - tx.daysAgo);
+
+      const { error } = await supabase.from('transactions').upsert(
+        {
+          user_id: userId,
+          plaid_transaction_id: 'mock-tx-' + tx.merchant.toLowerCase().replace(/\s/g, '-') + '-' + tx.daysAgo,
+          amount: tx.amount,
+          merchant_name: tx.merchant,
+          category: tx.category,
+          date: date.toISOString().split('T')[0],
+        },
+        {
+          onConflict: 'plaid_transaction_id',
+        }
+      );
+
+      if (!error) synced++;
+    }
+
+    logger.info({ userId, synced }, 'Created mock transactions');
     return synced;
   }
 

@@ -1,11 +1,10 @@
 import { Alert } from 'react-native';
 
-// Mock types matching react-native-plaid-link-sdk
+// Mock types matching the real SDK
 export interface LinkSuccess {
   publicToken: string;
   metadata: {
-    linkSessionId: string;
-    institution?: {
+    institution: {
       id: string;
       name: string;
     };
@@ -16,79 +15,104 @@ export interface LinkSuccess {
       type: string;
       subtype: string;
     }>;
+    linkSessionId: string;
   };
 }
 
 export interface LinkExit {
-  error?: {
+  error: {
     errorCode: string;
     errorMessage: string;
     displayMessage: string;
-  };
+  } | null;
   metadata: {
-    linkSessionId: string;
     status: string;
+    institution: {
+      id: string;
+      name: string;
+    } | null;
+    linkSessionId: string;
   };
 }
 
-interface OpenConfig {
+export interface LinkOpenProps {
   onSuccess: (success: LinkSuccess) => void;
   onExit: (exit: LinkExit) => void;
 }
 
-// Mock implementations
+let storedCallbacks: LinkOpenProps | null = null;
+
 export function create(_config: { token: string }): void {
-  console.log('[Mock Plaid] Link created with token');
+  // No-op
 }
 
-export function open(config: OpenConfig): void {
-  console.log('[Mock Plaid] Opening Link...');
+export function open(props: LinkOpenProps): void {
+  storedCallbacks = props;
 
   Alert.alert(
-    'Demo Mode',
-    'Plaid Link requires a native build. For this demo, we\'ll simulate a successful bank connection.',
+    'Select a Bank (Mock)',
+    'This is a simulated Plaid connection for testing.',
     [
+      {
+        text: 'Chase Bank',
+        onPress: () => simulateSuccess('Chase'),
+      },
+      {
+        text: 'Bank of America', 
+        onPress: () => simulateSuccess('Bank of America'),
+      },
       {
         text: 'Cancel',
         style: 'cancel',
-        onPress: () => {
-          config.onExit({
-            metadata: {
-              linkSessionId: 'mock-session',
-              status: 'cancelled',
-            },
-          });
-        },
-      },
-      {
-        text: 'Connect Demo Bank',
-        onPress: () => {
-          // Simulate successful connection
-          config.onSuccess({
-            publicToken: 'mock-public-token-sandbox',
-            metadata: {
-              linkSessionId: 'mock-session-123',
-              institution: {
-                id: 'ins_mock',
-                name: 'Demo Bank',
-              },
-              accounts: [
-                {
-                  id: 'mock-account-1',
-                  name: 'Demo Checking',
-                  mask: '1234',
-                  type: 'depository',
-                  subtype: 'checking',
-                },
-              ],
-            },
-          });
-        },
+        onPress: () => simulateExit(),
       },
     ]
   );
 }
 
 export function dismissLink(): void {
-  console.log('[Mock Plaid] Link dismissed');
+  storedCallbacks = null;
+}
+
+function simulateSuccess(bankName: string): void {
+  if (!storedCallbacks) return;
+
+  const success: LinkSuccess = {
+    publicToken: 'mock-public-token-' + Date.now(),
+    metadata: {
+      institution: {
+        id: 'ins_' + bankName.toLowerCase().replace(/\s/g, '_'),
+        name: bankName,
+      },
+      accounts: [
+        {
+          id: 'mock-account-1',
+          name: 'Checking',
+          mask: '1234',
+          type: 'depository',
+          subtype: 'checking',
+        },
+      ],
+      linkSessionId: 'mock-session-' + Date.now(),
+    },
+  };
+
+  storedCallbacks.onSuccess(success);
+  storedCallbacks = null;
+}
+
+function simulateExit(): void {
+  if (!storedCallbacks) return;
+
+  const exit: LinkExit = {
+    error: null,
+    metadata: {
+      status: 'user_exit',
+      institution: null,
+      linkSessionId: 'mock-session-' + Date.now(),
+    },
+  };
+
+  storedCallbacks.onExit(exit);
+  storedCallbacks = null;
 }
