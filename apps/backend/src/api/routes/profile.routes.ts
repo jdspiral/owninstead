@@ -116,6 +116,37 @@ profileRoutes.post('/complete-onboarding', async (req, res, next) => {
   }
 });
 
+// Save push token
+profileRoutes.post('/push-token', async (req, res, next) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+    const { pushToken } = req.body;
+
+    if (!pushToken || typeof pushToken !== 'string') {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 400, 'Push token is required');
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        push_token: pushToken,
+        push_token_updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+
+    if (error) {
+      throw new AppError(ERROR_CODES.INTERNAL_ERROR, 500, error.message);
+    }
+
+    res.json({
+      success: true,
+      data: { message: 'Push token saved' },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Confirm first trade
 profileRoutes.post('/confirm-first-trade', async (req, res, next) => {
   try {

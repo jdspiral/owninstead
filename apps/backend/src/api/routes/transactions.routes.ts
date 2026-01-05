@@ -4,6 +4,7 @@ import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
 import { updateTransactionSchema } from '@owninstead/shared';
 import { AppError } from '../middleware/errorHandler.js';
 import { ERROR_CODES } from '@owninstead/shared';
+import { plaidService } from '../../services/plaid.js';
 
 export const transactionsRoutes = Router();
 
@@ -78,6 +79,26 @@ transactionsRoutes.patch('/:id', async (req, res, next) => {
     res.json({
       success: true,
       data: transaction,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Sync transactions from Plaid
+transactionsRoutes.post('/sync', async (req, res, next) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+
+    const result = await plaidService.syncTransactions(userId);
+
+    res.json({
+      success: true,
+      data: {
+        synced: result.synced,
+        accounts: result.accounts,
+        message: `Synced ${result.synced} transactions from ${result.accounts} account(s)`,
+      },
     });
   } catch (error) {
     next(error);

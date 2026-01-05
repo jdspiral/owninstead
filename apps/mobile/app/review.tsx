@@ -30,7 +30,23 @@ interface Evaluation {
     category: string;
     invest_type: string;
     invest_amount: number | null;
+    streak_enabled: boolean;
   };
+}
+
+/**
+ * Calculate the streak bonus amount from an evaluation
+ */
+function calculateStreakBonus(evaluation: Evaluation): number {
+  if (!evaluation.rules.streak_enabled || evaluation.streak_count <= 1) {
+    return 0;
+  }
+  // Streak bonus is 10% per previous week (streak_count - 1 because current week is included)
+  const previousStreak = evaluation.streak_count - 1;
+  // calculated_invest = baseAmount * (1 + previousStreak * 0.1)
+  // So baseAmount = calculated_invest / (1 + previousStreak * 0.1)
+  const baseAmount = evaluation.calculated_invest / (1 + previousStreak * 0.1);
+  return evaluation.calculated_invest - baseAmount;
 }
 
 interface PendingData {
@@ -249,6 +265,14 @@ export default function WeeklyReviewScreen() {
                     <Text style={styles.investValue}>
                       ${evaluation.final_invest.toFixed(2)}
                     </Text>
+                    {calculateStreakBonus(evaluation) > 0 && (
+                      <View style={styles.streakBonusNote}>
+                        <Ionicons name="flame" size={14} color="#F59E0B" />
+                        <Text style={styles.streakBonusText}>
+                          Includes ${calculateStreakBonus(evaluation).toFixed(2)} streak bonus
+                        </Text>
+                      </View>
+                    )}
                     {evaluation.calculated_invest !== evaluation.final_invest && (
                       <Text style={styles.cappedNote}>
                         (capped from ${evaluation.calculated_invest.toFixed(2)})
@@ -520,6 +544,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9CA3AF',
     marginTop: 2,
+  },
+  streakBonusNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 4,
+  },
+  streakBonusText: {
+    fontSize: 13,
+    color: '#92400E',
+    fontWeight: '500',
   },
   actionButtons: {
     flexDirection: 'row',

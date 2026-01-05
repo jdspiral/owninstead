@@ -3,6 +3,7 @@ import { redis } from '../lib/redis.js';
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { ruleEngine } from '../services/rule-engine.js';
+import { sendPushNotification, notificationTemplates } from '../services/notifications.js';
 
 const QUEUE_NAME = 'weekly-evaluation';
 
@@ -37,6 +38,9 @@ export const weeklyEvaluationWorker = redis
     )
   : null;
 
+// Streak milestones that trigger special notifications
+const STREAK_MILESTONES = [3, 5, 10, 25, 52];
+
 /**
  * Process weekly evaluation for a single user
  */
@@ -46,11 +50,37 @@ async function processUserEvaluation(userId: string): Promise<void> {
   // Create evaluations for this user
   await ruleEngine.createEvaluations(userId);
 
-  // TODO: Send push notification to user
-  // await sendPushNotification(userId, 'weekly_review', {
-  //   title: 'Weekly Review Ready',
-  //   body: 'Your spending summary is ready. Tap to review and confirm investments.',
-  // });
+  // Get pending evaluations with streak info
+  const { data: evaluations } = await supabase
+    .from('evaluations')
+    .select('final_invest, streak_count, rules(streak_enabled)')
+    .eq('user_id', userId)
+    .eq('status', 'pending');
+
+  const totalSavings = evaluations?.reduce((sum, e) => sum + (e.final_invest || 0), 0) || 0;
+
+  // Check for streak milestones
+  for (const evaluation of evaluations || []) {
+    const rule = evaluation.rules as { streak_enabled: boolean } | null;
+    if (rule?.streak_enabled && STREAK_MILESTONES.includes(evaluation.streak_count)) {
+      const bonusPercent = evaluation.streak_count * 10;
+      await sendPushNotification(
+        userId,
+        'streak_bonus',
+        notificationTemplates.streakBonus(evaluation.streak_count, bonusPercent)
+      );
+      break; // Only send one streak notification per evaluation cycle
+    }
+  }
+
+  // Only send weekly review notification if there are savings to invest
+  if (totalSavings > 0) {
+    await sendPushNotification(
+      userId,
+      'weekly_review',
+      notificationTemplates.weeklyReview(totalSavings)
+    );
+  }
 }
 
 /**

@@ -3,6 +3,7 @@ import { redis } from '../lib/redis.js';
 import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { snaptradeService } from '../services/snaptrade.js';
+import { sendPushNotification, notificationTemplates } from '../services/notifications.js';
 
 const QUEUE_NAME = 'trade-execution';
 
@@ -171,11 +172,12 @@ async function executeTrade(evaluation: Evaluation): Promise<void> {
       'Trade submitted successfully'
     );
 
-    // TODO: Send push notification
-    // await sendPushNotification(userId, 'order_submitted', {
-    //   title: 'Investment Order Placed',
-    //   body: `Your $${final_invest.toFixed(2)} ${symbol} order has been submitted.`,
-    // });
+    // Send push notification
+    await sendPushNotification(
+      userId,
+      'order_submitted',
+      notificationTemplates.orderSubmitted(final_invest, symbol)
+    );
   } catch (err) {
     // Update order with error
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -189,11 +191,12 @@ async function executeTrade(evaluation: Evaluation): Promise<void> {
 
     logger.error({ error: err, evaluationId, orderId: order.id }, 'Trade execution failed');
 
-    // TODO: Send push notification about failure
-    // await sendPushNotification(userId, 'order_failed', {
-    //   title: 'Investment Failed',
-    //   body: 'There was an issue with your investment order. Please try again.',
-    // });
+    // Send push notification about failure
+    await sendPushNotification(
+      userId,
+      'order_failed',
+      notificationTemplates.orderFailed()
+    );
 
     throw err;
   }

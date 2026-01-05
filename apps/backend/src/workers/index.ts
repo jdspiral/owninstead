@@ -10,6 +10,11 @@ import {
   scheduleTradeExecution,
   triggerEvaluationTrade,
 } from './trade-execution.js';
+import {
+  transactionSyncWorker,
+  scheduleTransactionSync,
+  triggerUserTransactionSync,
+} from './transaction-sync.js';
 
 /**
  * Initialize all workers and schedule cron jobs
@@ -39,9 +44,19 @@ export async function initializeWorkers(): Promise<void> {
     });
   }
 
+  if (transactionSyncWorker) {
+    transactionSyncWorker.on('completed', (job) => {
+      logger.debug({ jobId: job.id }, 'Transaction sync job completed');
+    });
+    transactionSyncWorker.on('failed', (job, err) => {
+      logger.error({ jobId: job?.id, err }, 'Transaction sync job failed');
+    });
+  }
+
   // Schedule cron jobs
   await scheduleWeeklyEvaluation();
   await scheduleTradeExecution();
+  await scheduleTransactionSync();
 
   logger.info('Workers initialized and cron jobs scheduled');
 }
@@ -60,9 +75,13 @@ export async function shutdownWorkers(): Promise<void> {
     closePromises.push(tradeExecutionWorker.close());
   }
 
+  if (transactionSyncWorker) {
+    closePromises.push(transactionSyncWorker.close());
+  }
+
   await Promise.all(closePromises);
   logger.info('Workers shut down');
 }
 
 // Re-export for external use
-export { triggerUserEvaluation, triggerEvaluationTrade };
+export { triggerUserEvaluation, triggerEvaluationTrade, triggerUserTransactionSync };
