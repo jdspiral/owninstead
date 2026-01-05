@@ -4,11 +4,79 @@ import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
 import { confirmEvaluationSchema } from '@owninstead/shared';
 import { AppError } from '../middleware/errorHandler.js';
 import { ERROR_CODES } from '@owninstead/shared';
+import { ruleEngine } from '../../services/rule-engine.js';
 
 export const evaluationsRoutes = Router();
 
 // All routes require authentication
 evaluationsRoutes.use(authMiddleware);
+
+// Preview current week's progress
+evaluationsRoutes.get('/preview', async (req, res, next) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+
+    const preview = await ruleEngine.previewCurrentWeek(userId);
+
+    res.json({
+      success: true,
+      data: preview,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get all pending evaluations (for weekly review)
+evaluationsRoutes.get('/pending', async (req, res, next) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+
+    const { data: evaluations, error } = await supabase
+      .from('evaluations')
+      .select('*, rules(category, invest_type, invest_amount)')
+      .eq('user_id', userId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new AppError(ERROR_CODES.INTERNAL_ERROR, 500, error.message);
+    }
+
+    // Calculate total pending investment
+    const totalPending = evaluations?.reduce(
+      (sum, e) => sum + (e.final_invest || 0),
+      0
+    ) || 0;
+
+    res.json({
+      success: true,
+      data: {
+        evaluations: evaluations || [],
+        totalPending,
+        count: evaluations?.length || 0,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Trigger evaluation manually (for testing)
+evaluationsRoutes.post('/trigger', async (req, res, next) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+
+    await ruleEngine.createEvaluations(userId);
+
+    res.json({
+      success: true,
+      data: { message: 'Evaluations created successfully' },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // List evaluations
 evaluationsRoutes.get('/', async (req, res, next) => {

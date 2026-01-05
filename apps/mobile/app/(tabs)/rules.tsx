@@ -1,71 +1,129 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Switch } from 'react-native';
-import { router } from 'expo-router';
+import { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Switch, ActivityIndicator, RefreshControl } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { CATEGORY_LABELS } from '@owninstead/shared';
+import { apiClient } from '@/services/api/client';
 
-const mockRules = [
-  {
-    id: '1',
-    category: 'delivery',
-    categoryLabel: 'Food Delivery',
-    targetSpend: 50,
-    investType: 'difference',
-    active: true,
-    streakEnabled: true,
-    currentStreak: 12,
-  },
-  {
-    id: '2',
-    category: 'coffee',
-    categoryLabel: 'Coffee Shops',
-    targetSpend: 20,
-    investType: 'fixed',
-    investAmount: 10,
-    active: true,
-    streakEnabled: false,
-    currentStreak: 0,
-  },
-];
+interface Rule {
+  id: string;
+  category: string;
+  merchant_pattern: string | null;
+  period: string;
+  target_spend: number;
+  invest_type: string;
+  invest_amount: number | null;
+  streak_enabled: boolean;
+  active: boolean;
+  created_at: string;
+}
 
 export default function RulesScreen() {
-  const renderRule = ({ item }: { item: (typeof mockRules)[0] }) => (
-    <View style={styles.ruleCard}>
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchRules = async () => {
+    try {
+      const response = await apiClient.get('/rules');
+      setRules(response.data?.data || []);
+    } catch (error) {
+      console.error('Failed to fetch rules:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchRules();
+    }, [])
+  );
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchRules();
+  };
+
+  const toggleRule = async (rule: Rule) => {
+    try {
+      await apiClient.patch(`/rules/${rule.id}`, { active: !rule.active });
+      setRules(rules.map(r =>
+        r.id === rule.id ? { ...r, active: !r.active } : r
+      ));
+    } catch (error) {
+      console.error('Failed to toggle rule:', error);
+    }
+  };
+
+  const renderRule = ({ item }: { item: Rule }) => (
+    <TouchableOpacity
+      style={styles.ruleCard}
+      onPress={() => router.push(`/edit-rule/${item.id}`)}
+      activeOpacity={0.7}
+    >
       <View style={styles.ruleHeader}>
         <View style={styles.ruleInfo}>
-          <Text style={styles.ruleName}>{item.categoryLabel}</Text>
-          <Text style={styles.ruleTarget}>Target: ${item.targetSpend}/week</Text>
-          {item.investType === 'fixed' ? (
-            <Text style={styles.ruleInvest}>Invest ${item.investAmount} when met</Text>
+          <Text style={styles.ruleName}>
+            {CATEGORY_LABELS[item.category] || item.category}
+          </Text>
+          <Text style={styles.ruleTarget}>
+            Target: ${item.target_spend}/{item.period === 'weekly' ? 'week' : 'month'}
+          </Text>
+          {item.invest_type === 'fixed' ? (
+            <Text style={styles.ruleInvest}>Invest ${item.invest_amount} when met</Text>
           ) : (
             <Text style={styles.ruleInvest}>Invest the difference</Text>
           )}
         </View>
         <Switch
           value={item.active}
-          onValueChange={() => {}}
+          onValueChange={() => toggleRule(item)}
           trackColor={{ false: '#D1D5DB', true: '#A5B4FC' }}
           thumbColor={item.active ? '#4F46E5' : '#f4f3f4'}
         />
       </View>
-      {item.streakEnabled && item.currentStreak > 0 && (
+      {item.streak_enabled && (
         <View style={styles.streakBadge}>
           <Ionicons name="flame" size={16} color="#F59E0B" />
-          <Text style={styles.streakText}>{item.currentStreak} week streak</Text>
+          <Text style={styles.streakText}>Streak bonus enabled</Text>
         </View>
       )}
-    </View>
+    </TouchableOpacity>
   );
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4F46E5" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <FlatList
-        data={mockRules}
+        data={rules}
         renderItem={renderRule}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+        }
         ListHeaderComponent={
           <Text style={styles.description}>
             When you spend less than your target, we invest the savings automatically.
           </Text>
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Ionicons name="receipt-outline" size={48} color="#D1D5DB" />
+            <Text style={styles.emptyTitle}>No rules yet</Text>
+            <Text style={styles.emptyText}>
+              Create your first spending rule to start investing your savings automatically.
+            </Text>
+          </View>
         }
       />
       <TouchableOpacity style={styles.addButton} onPress={() => router.push('/create-rule')}>
@@ -81,8 +139,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+  },
   list: {
     padding: 16,
+    paddingBottom: 100,
   },
   description: {
     fontSize: 14,
@@ -134,6 +199,24 @@ const styles = StyleSheet.create({
     color: '#92400E',
     fontWeight: '500',
     fontSize: 13,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: 16,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 32,
+    lineHeight: 20,
   },
   addButton: {
     position: 'absolute',

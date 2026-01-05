@@ -21,9 +21,34 @@ interface Transaction {
   excluded: boolean;
 }
 
+interface Order {
+  id: string;
+  symbol: string;
+  amount_dollars: number;
+  shares: number | null;
+  status: string;
+  submitted_at: string | null;
+  filled_at: string | null;
+  filled_price: number | null;
+  created_at: string;
+  evaluations: {
+    id: string;
+    period_start: string;
+    period_end: string;
+    rules: {
+      category: string;
+    };
+  } | null;
+}
+
 interface TransactionSection {
   title: string;
   data: Transaction[];
+}
+
+interface OrderSection {
+  title: string;
+  data: Order[];
 }
 
 type TabType = 'transactions' | 'investments';
@@ -31,20 +56,24 @@ type TabType = 'transactions' | 'investments';
 export default function HistoryScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('transactions');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchTransactions = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
       setError(null);
-      const response = await apiClient.get('/transactions', {
-        params: { pageSize: 100 },
-      });
-      setTransactions(response.data.data || []);
-    } catch (err: any) {
-      console.error('Failed to fetch transactions:', err);
-      setError(err.response?.data?.message || 'Failed to load transactions');
+      const [txResponse, ordersResponse] = await Promise.all([
+        apiClient.get('/transactions', { params: { pageSize: 100 } }),
+        apiClient.get('/orders', { params: { pageSize: 50 } }),
+      ]);
+      setTransactions(txResponse.data.data || []);
+      setOrders(ordersResponse.data.data || []);
+    } catch (err: unknown) {
+      console.error('Failed to fetch data:', err);
+      const axiosError = err as { response?: { data?: { message?: string } } };
+      setError(axiosError.response?.data?.message || 'Failed to load data');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -52,13 +81,13 @@ export default function HistoryScreen() {
   }, []);
 
   useEffect(() => {
-    fetchTransactions();
-  }, [fetchTransactions]);
+    fetchData();
+  }, [fetchData]);
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    fetchTransactions();
-  }, [fetchTransactions]);
+    fetchData();
+  }, [fetchData]);
 
   const toggleExcluded = async (transaction: Transaction) => {
     try {
@@ -151,7 +180,93 @@ export default function HistoryScreen() {
     </View>
   );
 
-  const renderInvestmentsTab = () => (
+  // Calculate total invested
+  const totalInvested = orders
+    .filter((o) => o.status === 'filled')
+    .reduce((sum, o) => sum + o.amount_dollars, 0);
+
+  // Group orders by month
+  const groupedOrders: OrderSection[] = orders.reduce(
+    (sections: OrderSection[], order) => {
+      const date = new Date(order.created_at);
+      const monthYear = date.toLocaleDateString('en-US', {
+        month: 'long',
+        year: 'numeric',
+      });
+
+      const existingSection = sections.find((s) => s.title === monthYear);
+      if (existingSection) {
+        existingSection.data.push(order);
+      } else {
+        sections.push({ title: monthYear, data: [order] });
+      }
+      return sections;
+    },
+    []
+  );
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'filled':
+        return '#059669';
+      case 'submitted':
+      case 'pending':
+        return '#F59E0B';
+      case 'failed':
+        return '#DC2626';
+      default:
+        return '#6B7280';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'filled':
+        return 'Completed';
+      case 'submitted':
+        return 'Processing';
+      case 'pending':
+        return 'Pending';
+      case 'failed':
+        return 'Failed';
+      default:
+        return status;
+    }
+  };
+
+  const renderOrder = ({ item: order }: { item: Order }) => (
+    <View style={styles.orderItem}>
+      <View style={styles.orderIconContainer}>
+        <Ionicons
+          name={order.status === 'filled' ? 'checkmark-circle' : 'time'}
+          size={20}
+          color={getStatusColor(order.status)}
+        />
+      </View>
+      <View style={styles.itemInfo}>
+        <Text style={styles.merchantName}>{order.symbol}</Text>
+        <Text style={styles.categoryText}>
+          {order.evaluations?.rules?.category || 'Investment'} •{' '}
+          {new Date(order.created_at).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          })}
+        </Text>
+      </View>
+      <View style={styles.itemRight}>
+        <Text style={styles.amountText}>${order.amount_dollars.toFixed(2)}</Text>
+        <Text style={[styles.statusText, { color: getStatusColor(order.status) }]}>
+          {getStatusLabel(order.status)}
+        </Text>
+      </View>
+    </View>
+  );
+
+  const renderOrderSectionHeader = ({ section }: { section: { title: string } }) => (
+    <Text style={styles.sectionHeader}>{section.title}</Text>
+  );
+
+  const renderEmptyOrders = () => (
     <View style={styles.emptyState}>
       <Ionicons name="trending-up-outline" size={48} color="#9CA3AF" />
       <Text style={styles.emptyTitle}>No Investments Yet</Text>
@@ -159,6 +274,28 @@ export default function HistoryScreen() {
         Set up rules and beat your targets to trigger investments
       </Text>
     </View>
+  );
+
+  const renderInvestmentsTab = () => (
+    <SectionList
+      sections={groupedOrders}
+      renderItem={renderOrder}
+      renderSectionHeader={renderOrderSectionHeader}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={[
+        styles.list,
+        orders.length === 0 && styles.emptyList,
+      ]}
+      stickySectionHeadersEnabled={false}
+      ListEmptyComponent={renderEmptyOrders}
+      refreshControl={
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={onRefresh}
+          tintColor="#4F46E5"
+        />
+      }
+    />
   );
 
   if (isLoading) {
@@ -177,12 +314,12 @@ export default function HistoryScreen() {
           {activeTab === 'transactions' ? 'Total Spending (30 days)' : 'Total Invested'}
         </Text>
         <Text style={styles.summaryValue}>
-          ${activeTab === 'transactions' ? totalSpend.toFixed(2) : '0.00'}
+          ${activeTab === 'transactions' ? totalSpend.toFixed(2) : totalInvested.toFixed(2)}
         </Text>
         <Text style={styles.summarySubtext}>
           {activeTab === 'transactions'
             ? `${transactions.filter((t) => !t.excluded).length} transactions`
-            : '0 investments'}
+            : `${orders.filter((o) => o.status === 'filled').length} investments`}
         </Text>
       </View>
 
@@ -213,7 +350,7 @@ export default function HistoryScreen() {
       {error && (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={fetchTransactions}>
+          <TouchableOpacity onPress={fetchData}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -386,6 +523,27 @@ const styles = StyleSheet.create({
   switch: {
     marginTop: 4,
     transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
+  },
+  orderItem: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  orderIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F0FDF4',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
   },
   emptyState: {
     flex: 1,
