@@ -27,12 +27,16 @@ export class PlaidService {
    * Create a Link token for initializing Plaid Link in the mobile app
    */
   async createLinkToken(userId: string): Promise<string> {
+    const isSandbox = env.PLAID_ENV === 'sandbox';
+
     const response = await plaidClient.linkTokenCreate({
       user: { client_user_id: userId },
       client_name: 'OwnInstead',
       products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
+      // Redirect URI for OAuth banks - must be registered in Plaid Dashboard
+      redirect_uri: isSandbox ? undefined : 'https://owninstead-backend.onrender.com/plaid/oauth-callback',
     });
 
     logger.info({ userId }, 'Created Plaid link token');
