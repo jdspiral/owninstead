@@ -23,7 +23,7 @@ export const createRuleSchema = z
     period: rulePeriodSchema.default('weekly'),
     targetSpend: z.number().min(0).max(10000),
     investType: investTypeSchema,
-    investAmount: z.number().min(1).max(1000).nullable().optional(),
+    investAmount: z.union([z.number().min(1).max(1000), z.null()]).optional(),
     streakEnabled: z.boolean().default(false),
   })
   .refine(
@@ -44,7 +44,7 @@ export const updateRuleSchema = z.object({
   merchantPattern: z.string().max(100).nullable().optional(),
   targetSpend: z.number().min(0).max(10000).optional(),
   investType: investTypeSchema.optional(),
-  investAmount: z.number().min(1).max(1000).nullable().optional(),
+  investAmount: z.union([z.number().min(1).max(1000), z.null()]).optional(),
   streakEnabled: z.boolean().optional(),
   active: z.boolean().optional(),
 });
