@@ -290,7 +290,10 @@ export default function SettingsScreen() {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
 
-          <View style={styles.settingItem}>
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => router.push('/(onboarding)/connect-brokerage')}
+          >
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Brokerage</Text>
               {profile?.snaptradeConnected ? (
@@ -302,7 +305,7 @@ export default function SettingsScreen() {
               )}
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Account */}
