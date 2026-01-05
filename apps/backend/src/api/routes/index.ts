@@ -7,6 +7,7 @@ import { snaptradeRoutes } from './snaptrade.routes.js';
 import { transactionsRoutes } from './transactions.routes.js';
 import { evaluationsRoutes } from './evaluations.routes.js';
 import { ordersRoutes } from './orders.routes.js';
+import { gamificationRoutes } from './gamification.routes.js';
 
 export const routes = Router();
 
@@ -18,3 +19,4 @@ routes.use('/snaptrade', snaptradeRoutes);
 routes.use('/transactions', transactionsRoutes);
 routes.use('/evaluations', evaluationsRoutes);
 routes.use('/orders', ordersRoutes);
+routes.use('/gamification', gamificationRoutes);

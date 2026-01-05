@@ -36,6 +36,7 @@
     "expo-splash-screen": "^31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-web-browser": "~15.0.10",
+    "lodash.debounce": "^4.0.8",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-plaid-link-sdk": "^12.7.0",
@@ -45,6 +46,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.23.0",
+    "@types/lodash.debounce": "^4.0.9",
     "@types/react": "~19.1.17",
     "babel-plugin-module-resolver": "^5.0.2",
     "typescript": "^5.4.0"

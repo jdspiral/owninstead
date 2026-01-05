@@ -65,7 +65,9 @@ export async function sendPushNotification(
       body: JSON.stringify(message),
     });
 
-    const result = await response.json();
+    const result = (await response.json()) as {
+      data?: { status?: string; message?: string; details?: { error?: string } };
+    };
 
     if (result.data?.status === 'error') {
       logger.error(

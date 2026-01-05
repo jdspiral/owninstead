@@ -326,6 +326,80 @@ export class SnapTradeService {
   }
 
   /**
+   * Search for symbols that can be traded on the user's account
+   * Filters to ETFs only
+   */
+  async searchSymbols(
+    userId: string,
+    query: string
+  ): Promise<{ symbol: string; name: string; description: string; universalSymbolId: string }[]> {
+    const connection = await this.getConnection(userId);
+
+    if (!connection || !connection.account_id) {
+      return [];
+    }
+
+    try {
+      const response = await snaptrade.referenceData.symbolSearchUserAccount({
+        userId: connection.snaptrade_user_id,
+        userSecret: connection.snaptrade_user_secret,
+        accountId: connection.account_id,
+        requestBody: {
+          substring: query,
+        },
+      });
+
+      const symbols = response.data || [];
+
+      // Filter to ETFs only and map to our format
+      return symbols
+        .filter((s) => {
+          const typeCode = s.type?.code?.toLowerCase() || '';
+          return typeCode.includes('etf');
+        })
+        .slice(0, 20) // Limit results
+        .map((s) => ({
+          symbol: s.symbol || '',
+          name: s.description || s.symbol || '',
+          description: s.exchange?.name || '',
+          universalSymbolId: s.id || '',
+        }));
+    } catch (err) {
+      logger.error({ err, userId, query }, 'Failed to search symbols');
+      return [];
+    }
+  }
+
+  /**
+   * Check if a specific symbol is available on the user's account
+   */
+  async isSymbolAvailable(userId: string, symbol: string): Promise<boolean> {
+    const connection = await this.getConnection(userId);
+
+    if (!connection || !connection.account_id) {
+      return false;
+    }
+
+    try {
+      const response = await snaptrade.referenceData.symbolSearchUserAccount({
+        userId: connection.snaptrade_user_id,
+        userSecret: connection.snaptrade_user_secret,
+        accountId: connection.account_id,
+        requestBody: {
+          substring: symbol,
+        },
+      });
+
+      const symbols = response.data || [];
+      return symbols.some(
+        (s) => s.symbol?.toUpperCase() === symbol.toUpperCase()
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Remove a SnapTrade connection
    */
   async removeConnection(userId: string): Promise<void> {

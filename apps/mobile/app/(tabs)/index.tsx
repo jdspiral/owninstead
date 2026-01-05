@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, FlatList } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_LABELS } from '@owninstead/shared';
 import { apiClient } from '@/services/api/client';
+import { LevelBadge, XPProgressBar, ChallengeCard } from '@/components';
 
 interface Rule {
   id: string;
@@ -35,11 +36,37 @@ interface WeekProgress {
   onTrack: boolean;
 }
 
+interface GamificationStats {
+  xp: number;
+  level: number;
+  totalInvested: number;
+  totalSaved: number;
+  levelTitle: string;
+  nextLevelProgress: {
+    current: number;
+    needed: number;
+    progress: number;
+  };
+  achievementCount: number;
+}
+
+interface Challenge {
+  id: string;
+  title: string;
+  description: string;
+  targetValue: number;
+  currentValue: number;
+  xpReward: number;
+  endsAt: string;
+}
+
 export default function DashboardScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [rules, setRules] = useState<Rule[]>([]);
   const [pendingData, setPendingData] = useState<PendingData | null>(null);
   const [weekProgress, setWeekProgress] = useState<WeekProgress[]>([]);
+  const [gamificationStats, setGamificationStats] = useState<GamificationStats | null>(null);
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -52,6 +79,7 @@ export default function DashboardScreen() {
 
   const fetchData = async () => {
     try {
+      // Fetch core data that's essential for the dashboard
       const [profileRes, rulesRes, pendingRes, previewRes] = await Promise.all([
         apiClient.get('/profile'),
         apiClient.get('/rules'),
@@ -62,6 +90,18 @@ export default function DashboardScreen() {
       setRules((rulesRes.data?.data || []).filter((r: Rule) => r.active));
       setPendingData(pendingRes.data?.data);
       setWeekProgress(previewRes.data?.data?.rules || []);
+
+      // Fetch gamification data separately so failures don't break dashboard
+      try {
+        const [statsRes, challengesRes] = await Promise.all([
+          apiClient.get('/gamification/stats'),
+          apiClient.get('/gamification/challenges'),
+        ]);
+        setGamificationStats(statsRes.data?.data);
+        setChallenges(challengesRes.data?.data || []);
+      } catch (gamificationError) {
+        console.log('Gamification data not available yet');
+      }
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
     } finally {
@@ -153,19 +193,75 @@ export default function DashboardScreen() {
         </View>
       )}
 
+      {/* Level & Progress */}
+      {gamificationStats && (
+        <View style={styles.levelSection}>
+          <View style={styles.levelHeader}>
+            <LevelBadge
+              level={gamificationStats.level}
+              title={gamificationStats.levelTitle}
+              size="large"
+            />
+            <TouchableOpacity
+              style={styles.achievementsButton}
+              onPress={() => router.push('/achievements')}
+            >
+              <Ionicons name="trophy" size={18} color="#4F46E5" />
+              <Text style={styles.achievementsButtonText}>Achievements</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.xpContainer}>
+            <XPProgressBar
+              currentXP={gamificationStats.nextLevelProgress.current}
+              neededXP={gamificationStats.nextLevelProgress.needed}
+              progress={gamificationStats.nextLevelProgress.progress}
+              level={gamificationStats.level}
+            />
+          </View>
+        </View>
+      )}
+
       {/* Stats */}
       <View style={styles.statsContainer}>
         <View style={styles.statCard}>
           <Ionicons name="trending-up" size={24} color="#059669" />
-          <Text style={styles.statValue}>$0</Text>
+          <Text style={styles.statValue}>
+            ${gamificationStats?.totalInvested?.toFixed(0) || '0'}
+          </Text>
           <Text style={styles.statLabel}>Total Invested</Text>
         </View>
         <View style={styles.statCard}>
-          <Ionicons name="flame" size={24} color="#F59E0B" />
-          <Text style={styles.statValue}>0</Text>
-          <Text style={styles.statLabel}>Week Streak</Text>
+          <Ionicons name="flash" size={24} color="#4F46E5" />
+          <Text style={styles.statValue}>
+            {gamificationStats?.xp?.toLocaleString() || '0'}
+          </Text>
+          <Text style={styles.statLabel}>Total XP</Text>
         </View>
       </View>
+
+      {/* Active Challenges */}
+      {challenges.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Weekly Challenges</Text>
+          </View>
+          <FlatList
+            horizontal
+            data={challenges}
+            keyExtractor={(item) => item.id}
+            showsHorizontalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <ChallengeCard
+                title={item.title}
+                description={item.description}
+                progress={Math.min((item.currentValue / item.targetValue) * 100, 100)}
+                xpReward={item.xpReward}
+                endsAt={item.endsAt}
+              />
+            )}
+          />
+        </View>
+      )}
 
       {/* This Week's Progress */}
       <View style={styles.section}>
@@ -246,33 +342,6 @@ export default function DashboardScreen() {
         )}
       </View>
 
-      {/* Quick Actions */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.actionsGrid}>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push('/create-rule')}
-          >
-            <Ionicons name="add" size={24} color="#4F46E5" />
-            <Text style={styles.actionLabel}>Add Rule</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push('/(tabs)/history')}
-          >
-            <Ionicons name="receipt" size={24} color="#4F46E5" />
-            <Text style={styles.actionLabel}>Transactions</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push('/(tabs)/settings')}
-          >
-            <Ionicons name="settings" size={24} color="#4F46E5" />
-            <Text style={styles.actionLabel}>Settings</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
     </ScrollView>
   );
 }
@@ -517,21 +586,34 @@ const styles = StyleSheet.create({
     color: '#059669',
     fontWeight: '500',
   },
-  actionsGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  actionCard: {
-    flex: 1,
+  levelSection: {
     backgroundColor: '#fff',
+    margin: 16,
+    marginBottom: 0,
     borderRadius: 12,
     padding: 16,
-    alignItems: 'center',
   },
-  actionLabel: {
-    fontSize: 13,
-    color: '#374151',
-    marginTop: 8,
-    fontWeight: '500',
+  levelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  achievementsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  achievementsButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4F46E5',
+  },
+  xpContainer: {
+    marginTop: 4,
   },
 });

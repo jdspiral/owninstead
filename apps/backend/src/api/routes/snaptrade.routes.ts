@@ -101,3 +101,46 @@ snaptradeRoutes.delete('/connection', async (req, res, next) => {
     next(error);
   }
 });
+
+// Search for tradeable symbols (ETFs only)
+snaptradeRoutes.get('/symbols/search', async (req, res, next) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+    const { q } = req.query;
+
+    if (!q || typeof q !== 'string' || q.length < 1) {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 400, 'Search query is required');
+    }
+
+    const symbols = await snaptradeService.searchSymbols(userId, q);
+
+    res.json({
+      success: true,
+      data: {
+        symbols,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Check if a symbol is available on user's brokerage
+snaptradeRoutes.get('/symbols/:symbol/available', async (req, res, next) => {
+  try {
+    const { userId } = req as unknown as AuthenticatedRequest;
+    const { symbol } = req.params;
+
+    const available = await snaptradeService.isSymbolAvailable(userId, symbol);
+
+    res.json({
+      success: true,
+      data: {
+        symbol,
+        available,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});

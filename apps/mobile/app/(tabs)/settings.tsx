@@ -11,13 +11,16 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useAuthStore } from '@/stores/authStore';
 import { router } from 'expo-router';
 import { apiClient } from '@/services/api/client';
-import { SUPPORTED_ASSETS } from '@owninstead/shared';
+import { CURATED_ETFS, SUPPORTED_ASSETS, ETFAsset } from '@owninstead/shared';
+import debounce from 'lodash.debounce';
 
 interface Profile {
   selected_asset: string;
@@ -30,6 +33,13 @@ interface Profile {
   brokerageName: string | null;
 }
 
+interface SearchResult {
+  symbol: string;
+  name: string;
+  description: string;
+  universalSymbolId: string;
+}
+
 type ModalType = 'asset' | 'maxPerTrade' | 'maxPerMonth' | null;
 
 export default function SettingsScreen() {
@@ -40,6 +50,11 @@ export default function SettingsScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [editValue, setEditValue] = useState('');
+
+  // Asset search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const fetchProfile = async () => {
     try {
@@ -88,11 +103,50 @@ export default function SettingsScreen() {
     setActiveModal(type);
     if (type === 'asset') {
       setEditValue(profile.selected_asset || 'VTI');
+      setSearchQuery('');
+      setSearchResults([]);
     } else if (type === 'maxPerTrade') {
       setEditValue(profile.max_per_trade.toString());
     } else if (type === 'maxPerMonth') {
       setEditValue(profile.max_per_month.toString());
     }
+  };
+
+  // Debounced search function
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const searchSymbols = useCallback(
+    debounce(async (query: string) => {
+      if (query.length < 1) {
+        setSearchResults([]);
+        setIsSearching(false);
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        const response = await apiClient.get<{ symbols: SearchResult[] }>(
+          `/snaptrade/symbols/search?q=${encodeURIComponent(query)}`
+        );
+        setSearchResults(response.data.symbols);
+      } catch (error) {
+        console.error('Search failed:', error);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300),
+    []
+  );
+
+  const handleSearchChange = (text: string) => {
+    setSearchQuery(text);
+    searchSymbols(text);
+  };
+
+  const handleSelectAsset = (symbol: string) => {
+    setEditValue(symbol);
+    setSearchQuery('');
+    setSearchResults([]);
   };
 
   const handleSaveModal = async () => {
@@ -137,6 +191,21 @@ export default function SettingsScreen() {
     const asset = SUPPORTED_ASSETS.find((a) => a.symbol === symbol);
     return asset ? `${symbol} (${asset.name})` : symbol;
   };
+
+  const renderAssetCard = (asset: ETFAsset | SearchResult, isSelected: boolean) => (
+    <TouchableOpacity
+      key={asset.symbol}
+      style={[styles.assetOption, isSelected && styles.assetOptionSelected]}
+      onPress={() => handleSelectAsset(asset.symbol)}
+    >
+      <View style={styles.assetInfo}>
+        <Text style={styles.assetSymbol}>{asset.symbol}</Text>
+        <Text style={styles.assetName}>{asset.name}</Text>
+        <Text style={styles.assetDesc}>{asset.description}</Text>
+      </View>
+      {isSelected && <Ionicons name="checkmark-circle" size={24} color="#4F46E5" />}
+    </TouchableOpacity>
+  );
 
   if (isLoading) {
     return (
@@ -204,19 +273,22 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Connections</Text>
 
-          <View style={styles.settingItem}>
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => router.push('/bank-accounts')}
+          >
             <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Bank Account</Text>
+              <Text style={styles.settingLabel}>Bank Accounts</Text>
               {profile?.plaidConnected ? (
                 <Text style={styles.settingValueGreen}>
-                  Connected ({profile.plaidInstitutions.join(', ')})
+                  {profile.plaidInstitutions.length} connected
                 </Text>
               ) : (
                 <Text style={styles.settingValueRed}>Not connected</Text>
               )}
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </View>
+          </TouchableOpacity>
 
           <View style={styles.settingItem}>
             <View style={styles.settingInfo}>
@@ -272,46 +344,76 @@ export default function SettingsScreen() {
 
       {/* Asset Selection Modal */}
       <Modal visible={activeModal === 'asset'} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Asset</Text>
-              <TouchableOpacity onPress={() => setActiveModal(null)}>
-                <Ionicons name="close" size={24} color="#111827" />
-              </TouchableOpacity>
-            </View>
-            {SUPPORTED_ASSETS.map((asset) => (
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.assetModalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Asset</Text>
+                <TouchableOpacity onPress={() => setActiveModal(null)}>
+                  <Ionicons name="close" size={24} color="#111827" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Search input */}
+              <View style={styles.searchContainer}>
+                <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search for an ETF..."
+                  placeholderTextColor="#9CA3AF"
+                  value={searchQuery}
+                  onChangeText={handleSearchChange}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+                {isSearching && <ActivityIndicator size="small" color="#4F46E5" />}
+                {searchQuery.length > 0 && !isSearching && (
+                  <TouchableOpacity onPress={() => handleSearchChange('')}>
+                    <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <ScrollView style={styles.assetScrollView} showsVerticalScrollIndicator={false}>
+                {/* Search results */}
+                {searchQuery.length > 0 && (
+                  <View style={styles.assetSection}>
+                    <Text style={styles.assetSectionTitle}>Search Results</Text>
+                    {searchResults.length === 0 && !isSearching ? (
+                      <Text style={styles.noResults}>No ETFs found</Text>
+                    ) : (
+                      searchResults.map((result) => renderAssetCard(result, editValue === result.symbol))
+                    )}
+                  </View>
+                )}
+
+                {/* Curated categories */}
+                {searchQuery.length === 0 &&
+                  CURATED_ETFS.map((category) => (
+                    <View key={category.id} style={styles.assetSection}>
+                      <Text style={styles.assetSectionTitle}>{category.label}</Text>
+                      {category.assets.map((asset) => renderAssetCard(asset, editValue === asset.symbol))}
+                    </View>
+                  ))}
+              </ScrollView>
+
               <TouchableOpacity
-                key={asset.symbol}
-                style={[
-                  styles.assetOption,
-                  editValue === asset.symbol && styles.assetOptionSelected,
-                ]}
-                onPress={() => setEditValue(asset.symbol)}
+                style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+                onPress={handleSaveModal}
+                disabled={isSaving}
               >
-                <View style={styles.assetInfo}>
-                  <Text style={styles.assetSymbol}>{asset.symbol}</Text>
-                  <Text style={styles.assetName}>{asset.name}</Text>
-                  <Text style={styles.assetDesc}>{asset.description}</Text>
-                </View>
-                {editValue === asset.symbol && (
-                  <Ionicons name="checkmark-circle" size={24} color="#4F46E5" />
+                {isSaving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.saveButtonText}>Save</Text>
                 )}
               </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
-              onPress={handleSaveModal}
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.saveButtonText}>Save</Text>
-              )}
-            </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Amount Input Modal */}
@@ -465,6 +567,14 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 40,
   },
+  assetModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    paddingBottom: 40,
+    maxHeight: '85%',
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -481,13 +591,45 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginBottom: 20,
   },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#111827',
+  },
+  assetScrollView: {
+    maxHeight: 400,
+    marginBottom: 16,
+  },
+  assetSection: {
+    marginBottom: 20,
+  },
+  assetSectionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   assetOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
     backgroundColor: '#F9FAFB',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   assetOptionSelected: {
     backgroundColor: '#EEF2FF',
@@ -498,12 +640,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   assetSymbol: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: '#111827',
   },
   assetName: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#4B5563',
     marginTop: 2,
   },
@@ -511,6 +653,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9CA3AF',
     marginTop: 2,
+  },
+  noResults: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    paddingVertical: 16,
   },
   amountInputWrapper: {
     flexDirection: 'row',

@@ -20,6 +20,24 @@ export default function RootLayout() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(onboarding)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="bank-accounts"
+          options={{
+            headerShown: true,
+            title: 'Bank Accounts',
+            headerBackTitle: 'Settings',
+            presentation: 'card',
+          }}
+        />
+        <Stack.Screen
+          name="achievements"
+          options={{
+            headerShown: true,
+            title: 'Achievements',
+            headerBackTitle: 'Back',
+            presentation: 'card',
+          }}
+        />
       </Stack>
     </QueryClientProvider>
   );

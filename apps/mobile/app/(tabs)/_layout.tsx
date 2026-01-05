@@ -1,38 +1,7 @@
-import { useEffect, useRef } from 'react';
-import { Tabs, router } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
-import {
-  registerForPushNotifications,
-  addNotificationResponseListener,
-} from '@/services/notifications';
 
 export default function TabLayout() {
-  const notificationResponseListener = useRef<Notifications.EventSubscription>();
-
-  useEffect(() => {
-    // Register for push notifications
-    registerForPushNotifications();
-
-    // Handle notification taps
-    notificationResponseListener.current = addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data;
-
-      // Navigate based on notification type
-      if (data?.type === 'weekly_review') {
-        router.push('/review');
-      } else if (data?.type === 'order_submitted' || data?.type === 'order_failed') {
-        router.push('/(tabs)/history');
-      }
-    });
-
-    return () => {
-      if (notificationResponseListener.current) {
-        notificationResponseListener.current.remove();
-      }
-    };
-  }, []);
-
   return (
     <Tabs
       screenOptions={{

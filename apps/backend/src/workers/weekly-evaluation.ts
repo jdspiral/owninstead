@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { ruleEngine } from '../services/rule-engine.js';
 import { sendPushNotification, notificationTemplates } from '../services/notifications.js';
+import { gamificationService } from '../services/gamification.js';
 
 const QUEUE_NAME = 'weekly-evaluation';
 
@@ -61,7 +62,8 @@ async function processUserEvaluation(userId: string): Promise<void> {
 
   // Check for streak milestones
   for (const evaluation of evaluations || []) {
-    const rule = evaluation.rules as { streak_enabled: boolean } | null;
+    const rules = evaluation.rules as { streak_enabled: boolean }[] | null;
+    const rule = rules?.[0];
     if (rule?.streak_enabled && STREAK_MILESTONES.includes(evaluation.streak_count)) {
       const bonusPercent = evaluation.streak_count * 10;
       await sendPushNotification(
@@ -80,6 +82,17 @@ async function processUserEvaluation(userId: string): Promise<void> {
       'weekly_review',
       notificationTemplates.weeklyReview(totalSavings)
     );
+
+    // Award XP for beating targets
+    for (const evaluation of evaluations || []) {
+      if (evaluation.final_invest && evaluation.final_invest > 0) {
+        await gamificationService.processTargetBeat(
+          userId,
+          evaluation.final_invest,
+          evaluation.streak_count || 0
+        );
+      }
+    }
   }
 }
 

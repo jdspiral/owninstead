@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import { snaptradeService } from '../services/snaptrade.js';
 import { sendPushNotification, notificationTemplates } from '../services/notifications.js';
+import { gamificationService } from '../services/gamification.js';
 
 const QUEUE_NAME = 'trade-execution';
 
@@ -178,6 +179,18 @@ async function executeTrade(evaluation: Evaluation): Promise<void> {
       'order_submitted',
       notificationTemplates.orderSubmitted(final_invest, symbol)
     );
+
+    // Check if this is user's first investment
+    const { count } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .in('status', ['submitted', 'filled']);
+
+    const isFirstInvestment = count === 1;
+
+    // Award XP for investment
+    await gamificationService.processInvestment(userId, final_invest, isFirstInvestment);
   } catch (err) {
     // Update order with error
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
