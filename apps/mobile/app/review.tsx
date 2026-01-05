@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -42,13 +43,26 @@ export default function WeeklyReviewScreen() {
   const [data, setData] = useState<PendingData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [isFirstTrade, setIsFirstTrade] = useState(false);
+  const [showFirstTradeModal, setShowFirstTradeModal] = useState(false);
+  const [pendingEvaluationId, setPendingEvaluationId] = useState<string | null>(null);
+  const [isConfirmingFirstTrade, setIsConfirmingFirstTrade] = useState(false);
 
-  const fetchPendingEvaluations = async () => {
+  const fetchData = async () => {
     try {
-      const response = await apiClient.get('/evaluations/pending');
-      setData(response.data?.data);
+      const [evalResponse, profileResponse] = await Promise.all([
+        apiClient.get('/evaluations/pending'),
+        apiClient.get('/profile'),
+      ]);
+      setData(evalResponse.data?.data);
+
+      // Check if this is user's first trade
+      const profile = profileResponse.data?.data;
+      const needsFirstTradeConfirmation =
+        !profile?.first_trade_confirmed && !profile?.hasCompletedOrders;
+      setIsFirstTrade(needsFirstTradeConfirmation);
     } catch (error) {
-      console.error('Failed to fetch pending evaluations:', error);
+      console.error('Failed to fetch data:', error);
       Alert.alert('Error', 'Failed to load pending evaluations');
     } finally {
       setIsLoading(false);
@@ -56,15 +70,26 @@ export default function WeeklyReviewScreen() {
   };
 
   useEffect(() => {
-    fetchPendingEvaluations();
+    fetchData();
   }, []);
 
   const handleConfirm = async (evaluationId: string) => {
+    // If this is the first trade, show confirmation modal
+    if (isFirstTrade) {
+      setPendingEvaluationId(evaluationId);
+      setShowFirstTradeModal(true);
+      return;
+    }
+
+    await executeConfirm(evaluationId);
+  };
+
+  const executeConfirm = async (evaluationId: string) => {
     setProcessingId(evaluationId);
     try {
       await apiClient.post(`/evaluations/${evaluationId}/confirm`);
       // Refresh data
-      await fetchPendingEvaluations();
+      await fetchData();
     } catch (error) {
       console.error('Failed to confirm evaluation:', error);
       Alert.alert('Error', 'Failed to confirm investment');
@@ -73,12 +98,37 @@ export default function WeeklyReviewScreen() {
     }
   };
 
+  const handleFirstTradeConfirm = async () => {
+    if (!pendingEvaluationId) return;
+
+    setIsConfirmingFirstTrade(true);
+    try {
+      // Mark first trade as confirmed in profile
+      await apiClient.post('/profile/confirm-first-trade');
+      setIsFirstTrade(false);
+
+      // Now confirm the evaluation
+      await apiClient.post(`/evaluations/${pendingEvaluationId}/confirm`);
+
+      setShowFirstTradeModal(false);
+      setPendingEvaluationId(null);
+
+      // Refresh data
+      await fetchData();
+    } catch (error) {
+      console.error('Failed to confirm first trade:', error);
+      Alert.alert('Error', 'Failed to confirm investment');
+    } finally {
+      setIsConfirmingFirstTrade(false);
+    }
+  };
+
   const handleSkip = async (evaluationId: string) => {
     setProcessingId(evaluationId);
     try {
       await apiClient.post(`/evaluations/${evaluationId}/skip`);
       // Refresh data
-      await fetchPendingEvaluations();
+      await fetchData();
     } catch (error) {
       console.error('Failed to skip evaluation:', error);
       Alert.alert('Error', 'Failed to skip investment');
@@ -238,6 +288,78 @@ export default function WeeklyReviewScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* First Trade Confirmation Modal */}
+      <Modal visible={showFirstTradeModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.firstTradeModal}>
+            <View style={styles.firstTradeIconContainer}>
+              <Ionicons name="rocket" size={48} color="#4F46E5" />
+            </View>
+
+            <Text style={styles.firstTradeTitle}>Your First Investment!</Text>
+
+            <Text style={styles.firstTradeDesc}>
+              This is your first trade with OwnInstead. Here's what will happen:
+            </Text>
+
+            <View style={styles.firstTradeSteps}>
+              <View style={styles.firstTradeStep}>
+                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                <Text style={styles.firstTradeStepText}>
+                  We'll place a market order through your connected brokerage
+                </Text>
+              </View>
+              <View style={styles.firstTradeStep}>
+                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                <Text style={styles.firstTradeStepText}>
+                  Funds will be withdrawn from your brokerage cash balance
+                </Text>
+              </View>
+              <View style={styles.firstTradeStep}>
+                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                <Text style={styles.firstTradeStepText}>
+                  You'll own shares in your selected ETF
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.firstTradeNote}>
+              After this, future investments from your rules will be confirmed with a single tap.
+            </Text>
+
+            <View style={styles.firstTradeButtons}>
+              <TouchableOpacity
+                style={styles.firstTradeCancelButton}
+                onPress={() => {
+                  setShowFirstTradeModal(false);
+                  setPendingEvaluationId(null);
+                }}
+                disabled={isConfirmingFirstTrade}
+              >
+                <Text style={styles.firstTradeCancelText}>Not Now</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.firstTradeConfirmButton,
+                  isConfirmingFirstTrade && styles.buttonDisabled,
+                ]}
+                onPress={handleFirstTradeConfirm}
+                disabled={isConfirmingFirstTrade}
+              >
+                {isConfirmingFirstTrade ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.firstTradeConfirmText}>
+                    Confirm Investment
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -427,5 +549,94 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
+  },
+  // First Trade Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  firstTradeModal: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  firstTradeIconContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  firstTradeTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  firstTradeDesc: {
+    fontSize: 15,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  firstTradeSteps: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+  },
+  firstTradeStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  firstTradeStepText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 20,
+  },
+  firstTradeNote: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginBottom: 20,
+    fontStyle: 'italic',
+  },
+  firstTradeButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  firstTradeCancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+  },
+  firstTradeCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  firstTradeConfirmButton: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: '#4F46E5',
+    alignItems: 'center',
+  },
+  firstTradeConfirmText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
 });

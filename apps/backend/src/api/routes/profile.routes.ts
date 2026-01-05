@@ -37,6 +37,13 @@ profileRoutes.get('/', async (req, res, next) => {
       .eq('user_id', userId)
       .single();
 
+    // Check if user has any completed orders
+    const { count: orderCount } = await supabase
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .in('status', ['submitted', 'filled']);
+
     res.json({
       success: true,
       data: {
@@ -45,6 +52,7 @@ profileRoutes.get('/', async (req, res, next) => {
         snaptradeConnected: !!snaptradeConnection,
         plaidInstitutions: plaidConnections?.map((c) => c.institution_name) ?? [],
         brokerageName: snaptradeConnection?.brokerage_name ?? null,
+        hasCompletedOrders: (orderCount ?? 0) > 0,
       },
     });
   } catch (error) {
@@ -91,6 +99,31 @@ profileRoutes.post('/complete-onboarding', async (req, res, next) => {
     const { data: profile, error } = await supabase
       .from('profiles')
       .update({ onboarding_completed: true })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new AppError(ERROR_CODES.INTERNAL_ERROR, 500, error.message);
+    }
+
+    res.json({
+      success: true,
+      data: profile,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Confirm first trade
+profileRoutes.post('/confirm-first-trade', async (req, res, next) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .update({ first_trade_confirmed: true })
       .eq('id', userId)
       .select()
       .single();

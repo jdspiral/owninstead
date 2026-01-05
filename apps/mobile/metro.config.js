@@ -6,8 +6,13 @@ const monorepoRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
 
-// Watch all files in the monorepo
-config.watchFolders = [monorepoRoot];
+// Set project root explicitly
+config.projectRoot = projectRoot;
+
+// Watch the shared package for changes
+config.watchFolders = [
+  path.resolve(monorepoRoot, 'packages/shared'),
+];
 
 // Allow Metro to resolve modules from monorepo packages
 config.resolver.nodeModulesPaths = [
@@ -16,6 +21,7 @@ config.resolver.nodeModulesPaths = [
 ];
 
 // Handle .js extensions in TypeScript imports for shared package only
+const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Only transform .js -> .ts for files within the shared package
   if (
@@ -31,23 +37,11 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     }
   }
 
-  // Default resolution
+  // Use default resolution
+  if (originalResolveRequest) {
+    return originalResolveRequest(context, moduleName, platform);
+  }
   return context.resolveRequest(context, moduleName, platform);
-};
-
-// Resolve packages from monorepo
-config.resolver.disableHierarchicalLookup = true;
-
-// Fix for monorepo - set the project root correctly
-config.projectRoot = projectRoot;
-
-// Disable HMR to prevent crash
-config.server = {
-  ...config.server,
-  rewriteRequestUrl: (url) => {
-    // Don't modify regular requests
-    return url;
-  },
 };
 
 module.exports = config;
