@@ -1,20 +1,51 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/authStore';
 import { DEFAULT_MAX_PER_TRADE, DEFAULT_MAX_PER_MONTH } from '@owninstead/shared';
+import { apiClient } from '@/services/api/client';
 
 export default function SetLimitsScreen() {
   const [maxPerTrade, setMaxPerTrade] = useState(DEFAULT_MAX_PER_TRADE.toString());
   const [maxPerMonth, setMaxPerMonth] = useState(DEFAULT_MAX_PER_MONTH.toString());
+  const [isLoading, setIsLoading] = useState(false);
   const { setOnboardingComplete } = useAuthStore();
 
   const handleComplete = async () => {
-    // TODO: Save limits to profile via API
-    setOnboardingComplete();
-    router.replace('/(tabs)');
+    const tradeLimit = parseFloat(maxPerTrade) || DEFAULT_MAX_PER_TRADE;
+    const monthLimit = parseFloat(maxPerMonth) || DEFAULT_MAX_PER_MONTH;
+
+    if (tradeLimit <= 0 || monthLimit <= 0) {
+      Alert.alert('Invalid Limits', 'Please enter valid amounts greater than 0.');
+      return;
+    }
+
+    if (tradeLimit > monthLimit) {
+      Alert.alert('Invalid Limits', 'Per-trade limit cannot exceed monthly limit.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Save limits to profile
+      await apiClient.patch('/profile', {
+        maxPerTrade: tradeLimit,
+        maxPerMonth: monthLimit,
+      });
+
+      // Mark onboarding as complete
+      await apiClient.post('/profile/complete-onboarding');
+
+      setOnboardingComplete();
+      router.replace('/(tabs)');
+    } catch (error) {
+      console.error('Failed to save limits:', error);
+      Alert.alert('Error', 'Failed to save your settings. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -74,8 +105,16 @@ export default function SetLimitsScreen() {
       </View>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.button} onPress={handleComplete}>
-          <Text style={styles.buttonText}>Complete Setup</Text>
+        <TouchableOpacity
+          style={[styles.button, isLoading && styles.buttonDisabled]}
+          onPress={handleComplete}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Complete Setup</Text>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -169,6 +208,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 18,
     alignItems: 'center',
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: '#fff',

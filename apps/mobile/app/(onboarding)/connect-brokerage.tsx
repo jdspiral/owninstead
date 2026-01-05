@@ -1,13 +1,72 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
+import { apiClient } from '@/services/api/client';
 
 export default function ConnectBrokerageScreen() {
+  const [isLoading, setIsLoading] = useState(false);
+
   const handleConnectBrokerage = async () => {
-    // TODO: Implement SnapTrade OAuth
-    // For now, skip to next step
-    router.push('/(onboarding)/select-asset');
+    setIsLoading(true);
+
+    try {
+      // Get the SnapTrade redirect URL from our backend
+      const response = await apiClient.get('/snaptrade/redirect-uri');
+      const redirectUri = response.data?.data?.redirectUri;
+
+      if (!redirectUri) {
+        throw new Error('Failed to get brokerage connection URL');
+      }
+
+      // Open the SnapTrade connection portal in a browser
+      const result = await WebBrowser.openAuthSessionAsync(
+        redirectUri,
+        'owninstead://snaptrade/callback'
+      );
+
+      if (result.type === 'success' && result.url) {
+        // Parse the callback URL for authorization ID
+        const url = new URL(result.url);
+        const authorizationId = url.searchParams.get('authorization_id');
+
+        if (authorizationId) {
+          // Complete the connection on our backend
+          await apiClient.post('/snaptrade/callback', { authorizationId });
+
+          Alert.alert('Success', 'Brokerage connected successfully!', [
+            { text: 'Continue', onPress: () => router.push('/(onboarding)/select-asset') },
+          ]);
+        } else {
+          // User completed flow but no authorization - may have cancelled in portal
+          router.push('/(onboarding)/select-asset');
+        }
+      } else if (result.type === 'cancel') {
+        // User cancelled the browser session
+        Alert.alert(
+          'Connection Cancelled',
+          'Would you like to try again or skip for now?',
+          [
+            { text: 'Try Again', onPress: handleConnectBrokerage },
+            { text: 'Skip', onPress: () => router.push('/(onboarding)/select-asset') },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Brokerage connection error:', error);
+      Alert.alert(
+        'Connection Failed',
+        'Unable to connect to your brokerage. Please try again.',
+        [
+          { text: 'Try Again', onPress: handleConnectBrokerage },
+          { text: 'Skip', onPress: () => router.push('/(onboarding)/select-asset') },
+        ]
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -55,13 +114,22 @@ export default function ConnectBrokerageScreen() {
       </View>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.button} onPress={handleConnectBrokerage}>
-          <Text style={styles.buttonText}>Connect Brokerage</Text>
+        <TouchableOpacity
+          style={[styles.button, isLoading && styles.buttonDisabled]}
+          onPress={handleConnectBrokerage}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Connect Brokerage</Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.skipButton}
           onPress={() => router.push('/(onboarding)/select-asset')}
+          disabled={isLoading}
         >
           <Text style={styles.skipText}>Skip for now</Text>
         </TouchableOpacity>
@@ -155,6 +223,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 18,
     alignItems: 'center',
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: '#fff',

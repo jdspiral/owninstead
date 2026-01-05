@@ -1,16 +1,26 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { SUPPORTED_ASSETS } from '@owninstead/shared';
+import { apiClient } from '@/services/api/client';
 
 export default function SelectAssetScreen() {
   const [selectedAsset, setSelectedAsset] = useState('VTI');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleContinue = () => {
-    // TODO: Save selected asset to profile
-    router.push('/(onboarding)/set-limits');
+  const handleContinue = async () => {
+    setIsLoading(true);
+    try {
+      await apiClient.patch('/profile', { selectedAsset });
+      router.push('/(onboarding)/set-limits');
+    } catch (error) {
+      console.error('Failed to save asset selection:', error);
+      Alert.alert('Error', 'Failed to save your selection. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -55,8 +65,16 @@ export default function SelectAssetScreen() {
       </View>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.button} onPress={handleContinue}>
-          <Text style={styles.buttonText}>Continue</Text>
+        <TouchableOpacity
+          style={[styles.button, isLoading && styles.buttonDisabled]}
+          onPress={handleContinue}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Continue</Text>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -145,6 +163,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 18,
     alignItems: 'center',
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: '#fff',

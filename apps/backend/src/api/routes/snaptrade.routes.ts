@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { ERROR_CODES } from '@owninstead/shared';
+import { snaptradeService } from '../../services/snaptrade.js';
 
 export const snaptradeRoutes = Router();
 
@@ -11,16 +12,14 @@ snaptradeRoutes.use(authMiddleware);
 // Get redirect URI for OAuth
 snaptradeRoutes.get('/redirect-uri', async (req, res, next) => {
   try {
-    const { userId: _userId } = req as AuthenticatedRequest;
+    const { userId } = req as AuthenticatedRequest;
 
-    // TODO: Implement SnapTrade OAuth URL generation
-    // 1. Register user with SnapTrade if not exists
-    // 2. Generate login URL
+    const redirectUri = await snaptradeService.getLoginUrl(userId);
 
     res.json({
       success: true,
       data: {
-        redirectUri: 'TODO_IMPLEMENT_SNAPTRADE',
+        redirectUri,
       },
     });
   } catch (error) {
@@ -31,15 +30,14 @@ snaptradeRoutes.get('/redirect-uri', async (req, res, next) => {
 // Handle OAuth callback
 snaptradeRoutes.post('/callback', async (req, res, next) => {
   try {
-    const { userId: _userId } = req as AuthenticatedRequest;
-    const { code } = req.body;
+    const { userId } = req as AuthenticatedRequest;
+    const { authorizationId } = req.body;
 
-    if (!code) {
-      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 400, 'Authorization code is required');
+    if (!authorizationId) {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 400, 'authorizationId is required');
     }
 
-    // TODO: Implement SnapTrade callback handling
-    // Store connection details in snaptrade_connections
+    await snaptradeService.handleCallback(userId, authorizationId);
 
     res.json({
       success: true,
@@ -55,14 +53,48 @@ snaptradeRoutes.post('/callback', async (req, res, next) => {
 // List connected accounts
 snaptradeRoutes.get('/accounts', async (req, res, next) => {
   try {
-    const { userId: _userId } = req as AuthenticatedRequest;
+    const { userId } = req as AuthenticatedRequest;
 
-    // TODO: Implement SnapTrade account listing
+    const accounts = await snaptradeService.listAccounts(userId);
 
     res.json({
       success: true,
       data: {
-        accounts: [],
+        accounts,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get connection status
+snaptradeRoutes.get('/status', async (req, res, next) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+
+    const status = await snaptradeService.getConnectionStatus(userId);
+
+    res.json({
+      success: true,
+      data: status,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Remove connection
+snaptradeRoutes.delete('/connection', async (req, res, next) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+
+    await snaptradeService.removeConnection(userId);
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Brokerage connection removed',
       },
     });
   } catch (error) {
