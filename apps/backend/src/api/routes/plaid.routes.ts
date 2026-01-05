@@ -3,6 +3,7 @@ import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { ERROR_CODES } from '@owninstead/shared';
 import { plaidService } from '../../services/plaid.js';
+import { logger } from '../../lib/logger.js';
 
 export const plaidRoutes = Router();
 
@@ -13,6 +14,7 @@ plaidRoutes.use(authMiddleware);
 plaidRoutes.post('/link-token', async (req, res, next) => {
   try {
     const { userId } = req as AuthenticatedRequest;
+    logger.info({ userId }, 'Creating Plaid link token');
 
     const linkToken = await plaidService.createLinkToken(userId);
 
@@ -20,7 +22,13 @@ plaidRoutes.post('/link-token', async (req, res, next) => {
       success: true,
       data: { linkToken },
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    const err = error as Error & { response?: { data?: unknown } };
+    logger.error({
+      error: err.message,
+      stack: err.stack,
+      plaidError: err.response?.data
+    }, 'Failed to create Plaid link token');
     next(error);
   }
 });
