@@ -23,7 +23,7 @@ export const createRuleSchema = z
     period: rulePeriodSchema.default('weekly'),
     targetSpend: z.number().min(0).max(10000),
     investType: investTypeSchema,
-    investAmount: z.number().min(1).max(1000).optional(),
+    investAmount: z.number().min(1).max(1000).nullable().optional(),
     streakEnabled: z.boolean().default(false),
   })
   .refine(
