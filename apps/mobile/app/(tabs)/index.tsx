@@ -26,10 +26,20 @@ interface PendingData {
   count: number;
 }
 
+interface WeekProgress {
+  ruleId: string;
+  category: string;
+  targetSpend: number;
+  currentSpend: number;
+  projectedInvest: number;
+  onTrack: boolean;
+}
+
 export default function DashboardScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [rules, setRules] = useState<Rule[]>([]);
   const [pendingData, setPendingData] = useState<PendingData | null>(null);
+  const [weekProgress, setWeekProgress] = useState<WeekProgress[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -42,14 +52,16 @@ export default function DashboardScreen() {
 
   const fetchData = async () => {
     try {
-      const [profileRes, rulesRes, pendingRes] = await Promise.all([
+      const [profileRes, rulesRes, pendingRes, previewRes] = await Promise.all([
         apiClient.get('/profile'),
         apiClient.get('/rules'),
         apiClient.get('/evaluations/pending'),
+        apiClient.get('/evaluations/preview'),
       ]);
       setProfile(profileRes.data?.data);
       setRules((rulesRes.data?.data || []).filter((r: Rule) => r.active));
       setPendingData(pendingRes.data?.data);
+      setWeekProgress(previewRes.data?.data?.rules || []);
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
     } finally {
@@ -155,16 +167,16 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* Active Rules */}
+      {/* This Week's Progress */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Active Rules</Text>
+          <Text style={styles.sectionTitle}>This Week</Text>
           <TouchableOpacity onPress={() => router.push('/(tabs)/rules')}>
-            <Text style={styles.seeAllText}>See All</Text>
+            <Text style={styles.seeAllText}>Manage Rules</Text>
           </TouchableOpacity>
         </View>
 
-        {rules.length === 0 ? (
+        {weekProgress.length === 0 ? (
           <TouchableOpacity
             style={styles.emptyRulesCard}
             onPress={() => router.push('/create-rule')}
@@ -176,25 +188,61 @@ export default function DashboardScreen() {
             </Text>
           </TouchableOpacity>
         ) : (
-          rules.slice(0, 3).map((rule) => (
-            <TouchableOpacity
-              key={rule.id}
-              style={styles.ruleCard}
-              onPress={() => router.push('/(tabs)/rules')}
-            >
-              <View style={styles.ruleInfo}>
-                <Text style={styles.ruleName}>
-                  {CATEGORY_LABELS[rule.category] || rule.category}
-                </Text>
-                <Text style={styles.ruleTarget}>
-                  Target: ${rule.target_spend}/{rule.period === 'weekly' ? 'wk' : 'mo'}
-                </Text>
+          weekProgress.map((progress) => {
+            const percentUsed = Math.min((progress.currentSpend / progress.targetSpend) * 100, 100);
+            const remaining = Math.max(progress.targetSpend - progress.currentSpend, 0);
+
+            return (
+              <View key={progress.ruleId} style={styles.progressCard}>
+                <View style={styles.progressHeader}>
+                  <Text style={styles.progressCategory}>
+                    {CATEGORY_LABELS[progress.category] || progress.category}
+                  </Text>
+                  <View style={[
+                    styles.statusBadge,
+                    progress.onTrack ? styles.statusOnTrack : styles.statusOver
+                  ]}>
+                    <Text style={[
+                      styles.statusBadgeText,
+                      progress.onTrack ? styles.statusOnTrackText : styles.statusOverText
+                    ]}>
+                      {progress.onTrack ? 'On Track' : 'Over Budget'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.progressBarContainer}>
+                  <View
+                    style={[
+                      styles.progressBar,
+                      { width: `${percentUsed}%` },
+                      progress.onTrack ? styles.progressBarGreen : styles.progressBarRed
+                    ]}
+                  />
+                </View>
+
+                <View style={styles.progressDetails}>
+                  <Text style={styles.progressSpent}>
+                    ${progress.currentSpend.toFixed(0)} of ${progress.targetSpend.toFixed(0)}
+                  </Text>
+                  {progress.onTrack && remaining > 0 && (
+                    <Text style={styles.progressRemaining}>
+                      ${remaining.toFixed(0)} left
+                    </Text>
+                  )}
+                </View>
+
+                {progress.onTrack && progress.projectedInvest > 0 && (
+                  <View style={styles.projectedInvest}>
+                    <Ionicons name="trending-up" size={14} color="#059669" />
+                    <Text style={styles.projectedInvestText}>
+                      Projected: ${progress.projectedInvest.toFixed(2)} to invest
+                    </Text>
+                  </View>
+                )}
               </View>
-              <View style={styles.ruleStatus}>
-                <Text style={styles.ruleStatusText}>Tracking</Text>
-              </View>
-            </TouchableOpacity>
-          ))
+            );
+          })
         )}
       </View>
 
@@ -387,36 +435,87 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 4,
   },
-  ruleCard: {
+  progressCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
+    marginBottom: 12,
+  },
+  progressHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  ruleInfo: {},
-  ruleName: {
+  progressCategory: {
     fontSize: 16,
     fontWeight: '600',
     color: '#111827',
   },
-  ruleTarget: {
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusOnTrack: {
+    backgroundColor: '#D1FAE5',
+  },
+  statusOver: {
+    backgroundColor: '#FEE2E2',
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  statusOnTrackText: {
+    color: '#059669',
+  },
+  statusOverText: {
+    color: '#DC2626',
+  },
+  progressBarContainer: {
+    height: 8,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  progressBarGreen: {
+    backgroundColor: '#10B981',
+  },
+  progressBarRed: {
+    backgroundColor: '#EF4444',
+  },
+  progressDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  progressSpent: {
     fontSize: 14,
     color: '#6B7280',
-    marginTop: 2,
   },
-  ruleStatus: {
-    backgroundColor: '#D1FAE5',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  ruleStatusText: {
+  progressRemaining: {
+    fontSize: 14,
     color: '#059669',
     fontWeight: '500',
-    fontSize: 14,
+  },
+  projectedInvest: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    gap: 6,
+  },
+  projectedInvestText: {
+    fontSize: 13,
+    color: '#059669',
+    fontWeight: '500',
   },
   actionsGrid: {
     flexDirection: 'row',
