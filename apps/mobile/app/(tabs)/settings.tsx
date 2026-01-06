@@ -281,7 +281,7 @@ export default function SettingsScreen() {
               <Text style={styles.settingLabel}>Bank Accounts</Text>
               {profile?.plaidConnected ? (
                 <Text style={styles.settingValueGreen}>
-                  {profile.plaidInstitutions.length} connected
+                  {profile.plaidInstitutions?.length || 1} connected
                 </Text>
               ) : (
                 <Text style={styles.settingValueRed}>Not connected</Text>
