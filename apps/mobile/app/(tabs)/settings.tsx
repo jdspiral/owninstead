@@ -127,7 +127,7 @@ export default function SettingsScreen() {
         const response = await apiClient.get<{ symbols: SearchResult[] }>(
           `/snaptrade/symbols/search?q=${encodeURIComponent(query)}`
         );
-        setSearchResults(response.data.symbols);
+        setSearchResults(response.data.symbols || []);
       } catch (error) {
         console.error('Search failed:', error);
         setSearchResults([]);
@@ -385,10 +385,10 @@ export default function SettingsScreen() {
                 {searchQuery.length > 0 && (
                   <View style={styles.assetSection}>
                     <Text style={styles.assetSectionTitle}>Search Results</Text>
-                    {searchResults.length === 0 && !isSearching ? (
+                    {(searchResults?.length || 0) === 0 && !isSearching ? (
                       <Text style={styles.noResults}>No ETFs found</Text>
                     ) : (
-                      searchResults.map((result) => renderAssetCard(result, editValue === result.symbol))
+                      searchResults?.map((result) => renderAssetCard(result, editValue === result.symbol))
                     )}
                   </View>
                 )}

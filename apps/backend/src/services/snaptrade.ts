@@ -351,17 +351,20 @@ export class SnapTradeService {
 
       const symbols = response.data || [];
 
-      // Filter to ETFs only and map to our format
+      logger.info({ query, symbolCount: symbols.length, types: symbols.slice(0, 5).map(s => s.type?.code) }, 'SnapTrade symbol search results');
+
+      // Filter to ETFs and stocks, map to our format
       return symbols
         .filter((s) => {
           const typeCode = s.type?.code?.toLowerCase() || '';
-          return typeCode.includes('etf');
+          // Include ETFs and common stock types for broader compatibility
+          return typeCode.includes('etf') || typeCode.includes('stock') || typeCode.includes('equity') || typeCode === 'cs';
         })
         .slice(0, 20) // Limit results
         .map((s) => ({
           symbol: s.symbol || '',
           name: s.description || s.symbol || '',
-          description: s.exchange?.name || '',
+          description: `${s.type?.code || 'Stock'} - ${s.exchange?.name || ''}`,
           universalSymbolId: s.id || '',
         }));
     } catch (err) {
