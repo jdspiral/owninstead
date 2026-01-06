@@ -33,7 +33,7 @@ profileRoutes.get('/', async (req, res, next) => {
 
     const { data: snaptradeConnection } = await supabase
       .from('snaptrade_connections')
-      .select('id, brokerage_name')
+      .select('id, brokerage_name, account_id')
       .eq('user_id', userId)
       .single();
 
@@ -52,6 +52,7 @@ profileRoutes.get('/', async (req, res, next) => {
         snaptradeConnected: !!snaptradeConnection,
         plaidInstitutions: plaidConnections?.map((c) => c.institution_name) ?? [],
         brokerageName: snaptradeConnection?.brokerage_name ?? null,
+        snaptradeAccountId: snaptradeConnection?.account_id ?? null,
         hasCompletedOrders: (orderCount ?? 0) > 0,
       },
     });

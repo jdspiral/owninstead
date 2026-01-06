@@ -333,13 +333,31 @@ export class SnapTradeService {
     userId: string,
     query: string
   ): Promise<{ symbol: string; name: string; description: string; universalSymbolId: string }[]> {
-    const connection = await this.getConnection(userId);
+    let connection = await this.getConnection(userId);
 
     logger.info({ userId, hasConnection: !!connection, accountId: connection?.account_id }, 'searchSymbols connection check');
 
-    if (!connection || !connection.account_id) {
-      logger.warn({ userId }, 'No SnapTrade connection or account_id for symbol search');
+    if (!connection) {
+      logger.warn({ userId }, 'No SnapTrade connection for symbol search');
       return [];
+    }
+
+    // Auto-sync if account_id is missing
+    if (!connection.account_id) {
+      logger.info({ userId }, 'Auto-syncing SnapTrade account');
+      try {
+        await this.handleCallback(userId, '');
+        // Refetch connection after sync
+        const refreshed = await this.getConnection(userId);
+        if (!refreshed?.account_id) {
+          logger.warn({ userId }, 'Still no account_id after sync');
+          return [];
+        }
+        connection = refreshed;
+      } catch (syncErr) {
+        logger.error({ syncErr, userId }, 'Auto-sync failed');
+        return [];
+      }
     }
 
     try {
@@ -357,7 +375,7 @@ export class SnapTradeService {
       logger.info({ query, symbolCount: symbols.length, types: symbols.slice(0, 5).map(s => s.type?.code) }, 'SnapTrade symbol search results');
 
       // Filter to ETFs and stocks, map to our format
-      return symbols
+      const filtered = symbols
         .filter((s) => {
           const typeCode = s.type?.code?.toLowerCase() || '';
           // Include ETFs and common stock types for broader compatibility
@@ -370,6 +388,9 @@ export class SnapTradeService {
           description: `${s.type?.code || 'Stock'} - ${s.exchange?.name || ''}`,
           universalSymbolId: s.id || '',
         }));
+
+      logger.info({ query, filteredCount: filtered.length, firstFew: filtered.slice(0, 3) }, 'After filtering symbols');
+      return filtered;
     } catch (err) {
       logger.error({ err, userId, query }, 'Failed to search symbols');
       return [];

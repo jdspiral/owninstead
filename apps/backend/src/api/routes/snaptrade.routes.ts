@@ -84,6 +84,24 @@ snaptradeRoutes.get('/status', async (req, res, next) => {
   }
 });
 
+// Sync accounts (refresh account_id from SnapTrade)
+snaptradeRoutes.post('/sync', async (req, res, next) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+
+    await snaptradeService.handleCallback(userId, '');
+
+    const status = await snaptradeService.getConnectionStatus(userId);
+
+    res.json({
+      success: true,
+      data: status,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Remove connection
 snaptradeRoutes.delete('/connection', async (req, res, next) => {
   try {

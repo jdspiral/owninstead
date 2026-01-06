@@ -59,7 +59,20 @@ export default function SettingsScreen() {
   const fetchProfile = async () => {
     try {
       const response = await apiClient.get('/profile');
-      setProfile(response.data?.data);
+      const profileData = response.data?.data;
+      setProfile(profileData);
+
+      // If user has brokerage connected but no account synced, trigger sync
+      if (profileData?.brokerageName && !profileData?.snaptradeAccountId) {
+        try {
+          await apiClient.post('/snaptrade/sync');
+          // Refetch profile to get updated account info
+          const refreshed = await apiClient.get('/profile');
+          setProfile(refreshed.data?.data);
+        } catch (syncError) {
+          console.error('Failed to sync brokerage:', syncError);
+        }
+      }
     } catch (error) {
       console.error('Failed to fetch profile:', error);
     } finally {
@@ -127,7 +140,7 @@ export default function SettingsScreen() {
         const response = await apiClient.get<{ symbols: SearchResult[] }>(
           `/snaptrade/symbols/search?q=${encodeURIComponent(query)}`
         );
-        setSearchResults(response.data.symbols || []);
+        setSearchResults(response.data.data?.symbols || []);
       } catch (error) {
         console.error('Search failed:', error);
         setSearchResults([]);
