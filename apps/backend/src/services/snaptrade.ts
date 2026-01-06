@@ -97,13 +97,24 @@ export class SnapTradeService {
 
   /**
    * Generate a login URL for connecting a brokerage account
+   * @param userId - The user's ID
+   * @param connectionType - 'read' for read-only, 'trade' for trading enabled (default: 'trade')
+   * @param reconnect - Optional brokerage authorization ID to reconnect/upgrade existing connection
    */
-  async getLoginUrl(userId: string): Promise<string> {
+  async getLoginUrl(
+    userId: string,
+    connectionType: 'read' | 'trade' = 'trade',
+    reconnect?: string
+  ): Promise<string> {
     const { snaptradeUserId, userSecret } = await this.registerUser(userId);
 
     const response = await snaptrade.authentication.loginSnapTradeUser({
       userId: snaptradeUserId,
       userSecret,
+      requestBody: {
+        connectionType,
+        reconnect,
+      },
     });
 
     // Response can be either EncryptedResponse or LoginRedirectURI
@@ -114,7 +125,7 @@ export class SnapTradeService {
       throw new Error('Failed to get redirect URI from SnapTrade');
     }
 
-    logger.info({ userId }, 'Generated SnapTrade login URL');
+    logger.info({ userId, connectionType, reconnect }, 'Generated SnapTrade login URL');
     return redirectUri;
   }
 
@@ -240,24 +251,24 @@ export class SnapTradeService {
 
     let units: number;
 
+    const quote = await this.getQuote(
+      connection.snaptrade_user_id,
+      connection.snaptrade_user_secret,
+      symbolId,
+      accountId
+    );
+
+    logger.info(
+      { symbol: params.symbol, symbolId, price: quote.lastPrice, amount: params.amountDollars },
+      'Got quote for order'
+    );
+
     if (connection.supports_notional) {
       // For notional orders, set units to represent dollar amount
       // Some brokerages support fractional shares
-      const quote = await this.getQuote(
-        connection.snaptrade_user_id,
-        connection.snaptrade_user_secret,
-        symbolId,
-        accountId
-      );
       units = params.amountDollars / quote.lastPrice;
     } else {
       // Calculate whole shares based on current price
-      const quote = await this.getQuote(
-        connection.snaptrade_user_id,
-        connection.snaptrade_user_secret,
-        symbolId,
-        accountId
-      );
       units = Math.floor(params.amountDollars / quote.lastPrice);
     }
 
@@ -265,18 +276,32 @@ export class SnapTradeService {
       throw new Error('Order amount too small to purchase any shares');
     }
 
-    const orderResponse = await snaptrade.trading.placeForceOrder({
-      userId: connection.snaptrade_user_id,
-      userSecret: connection.snaptrade_user_secret,
-      requestBody: {
-        account_id: accountId,
-        action: 'BUY',
-        order_type: 'Market',
-        time_in_force: 'Day',
-        universal_symbol_id: symbolId,
-        units,
-      },
-    });
+    let orderResponse;
+    try {
+      logger.info(
+        { userId: params.userId, symbol: params.symbol, units, symbolId, accountId },
+        'Placing trade order'
+      );
+      orderResponse = await snaptrade.trading.placeForceOrder({
+        userId: connection.snaptrade_user_id,
+        userSecret: connection.snaptrade_user_secret,
+        requestBody: {
+          account_id: accountId,
+          action: 'BUY',
+          order_type: 'Market',
+          time_in_force: 'Day',
+          universal_symbol_id: symbolId,
+          units,
+        },
+      });
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { status?: number; data?: unknown } };
+      logger.error(
+        { err, responseStatus: axiosError.response?.status, responseData: axiosError.response?.data },
+        'SnapTrade placeForceOrder failed'
+      );
+      throw err;
+    }
 
     const order = orderResponse.data;
 
@@ -378,8 +403,8 @@ export class SnapTradeService {
       const filtered = symbols
         .filter((s) => {
           const typeCode = s.type?.code?.toLowerCase() || '';
-          // Include ETFs and common stock types for broader compatibility
-          return typeCode.includes('etf') || typeCode.includes('stock') || typeCode.includes('equity') || typeCode === 'cs';
+          // Include ETFs (et), common stocks (cs), and other equity types
+          return typeCode === 'et' || typeCode === 'etf' || typeCode === 'cs' || typeCode.includes('stock') || typeCode.includes('equity');
         })
         .slice(0, 20) // Limit results
         .map((s) => ({
@@ -424,6 +449,24 @@ export class SnapTradeService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * List brokerage authorizations for debugging
+   */
+  async listBrokerageAuthorizations(userId: string): Promise<unknown[]> {
+    const connection = await this.getConnection(userId);
+
+    if (!connection) {
+      return [];
+    }
+
+    const response = await snaptrade.connections.listBrokerageAuthorizations({
+      userId: connection.snaptrade_user_id,
+      userSecret: connection.snaptrade_user_secret,
+    });
+
+    return response.data || [];
   }
 
   /**

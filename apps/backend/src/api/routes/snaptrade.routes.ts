@@ -13,8 +13,13 @@ snaptradeRoutes.use(authMiddleware);
 snaptradeRoutes.get('/redirect-uri', async (req, res, next) => {
   try {
     const { userId } = req as AuthenticatedRequest;
+    const { reconnect } = req.query;
 
-    const redirectUri = await snaptradeService.getLoginUrl(userId);
+    const redirectUri = await snaptradeService.getLoginUrl(
+      userId,
+      'trade',
+      reconnect as string | undefined
+    );
 
     res.json({
       success: true,
@@ -78,6 +83,22 @@ snaptradeRoutes.get('/status', async (req, res, next) => {
     res.json({
       success: true,
       data: status,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Debug: List brokerage authorizations (dev only)
+snaptradeRoutes.get('/debug/authorizations', async (req, res, next) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+
+    const authorizations = await snaptradeService.listBrokerageAuthorizations(userId);
+
+    res.json({
+      success: true,
+      data: authorizations,
     });
   } catch (error) {
     next(error);
