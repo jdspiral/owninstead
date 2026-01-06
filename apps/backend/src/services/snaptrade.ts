@@ -364,7 +364,7 @@ export class SnapTradeService {
       const response = await snaptrade.referenceData.symbolSearchUserAccount({
         userId: connection.snaptrade_user_id,
         userSecret: connection.snaptrade_user_secret,
-        accountId: connection.account_id,
+        accountId: connection.account_id!,
         requestBody: {
           substring: query,
         },

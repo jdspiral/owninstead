@@ -165,7 +165,7 @@ export default function SettingsScreen() {
 
       setIsSearching(true);
       try {
-        const response = await apiClient.get<{ symbols: SearchResult[] }>(
+        const response = await apiClient.get<{ data: { symbols: SearchResult[] } }>(
           `/snaptrade/symbols/search?q=${encodeURIComponent(query)}`
         );
         setSearchResults(response.data.data?.symbols || []);
