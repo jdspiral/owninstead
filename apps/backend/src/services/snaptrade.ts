@@ -335,7 +335,10 @@ export class SnapTradeService {
   ): Promise<{ symbol: string; name: string; description: string; universalSymbolId: string }[]> {
     const connection = await this.getConnection(userId);
 
+    logger.info({ userId, hasConnection: !!connection, accountId: connection?.account_id }, 'searchSymbols connection check');
+
     if (!connection || !connection.account_id) {
+      logger.warn({ userId }, 'No SnapTrade connection or account_id for symbol search');
       return [];
     }
 
