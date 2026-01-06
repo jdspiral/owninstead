@@ -5,6 +5,7 @@ import { confirmEvaluationSchema } from '@owninstead/shared';
 import { AppError } from '../middleware/errorHandler.js';
 import { ERROR_CODES } from '@owninstead/shared';
 import { ruleEngine } from '../../services/rule-engine.js';
+import { triggerEvaluationTrade } from '../../workers/trade-execution.js';
 
 export const evaluationsRoutes = Router();
 
@@ -204,6 +205,40 @@ evaluationsRoutes.post('/:id/skip', async (req, res, next) => {
     res.json({
       success: true,
       data: evaluation,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Execute trade for confirmed evaluation (for testing)
+evaluationsRoutes.post('/:id/execute', async (req, res, next) => {
+  try {
+    const { userId } = req as unknown as AuthenticatedRequest;
+    const { id } = req.params;
+
+    // Verify the evaluation belongs to the user and is confirmed
+    const { data: evaluation, error } = await supabase
+      .from('evaluations')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !evaluation) {
+      throw new AppError(ERROR_CODES.NOT_FOUND, 404, 'Evaluation not found');
+    }
+
+    if (evaluation.status !== 'confirmed') {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, 400, 'Evaluation must be confirmed before execution');
+    }
+
+    // Trigger trade execution
+    await triggerEvaluationTrade(id);
+
+    res.json({
+      success: true,
+      data: { message: 'Trade execution triggered' },
     });
   } catch (error) {
     next(error);
