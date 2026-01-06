@@ -111,6 +111,34 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleBrokerageTap = () => {
+    if (profile?.snaptradeConnected) {
+      Alert.alert(
+        'Brokerage Connected',
+        `Your ${profile.brokerageName || 'brokerage'} account is connected.`,
+        [
+          {
+            text: 'Disconnect',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await apiClient.delete('/snaptrade/connection');
+                setProfile({ ...profile, snaptradeConnected: false, brokerageName: null });
+                Alert.alert('Disconnected', 'Your brokerage has been disconnected.');
+              } catch (error) {
+                console.error('Failed to disconnect:', error);
+                Alert.alert('Error', 'Failed to disconnect brokerage.');
+              }
+            },
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    } else {
+      router.push('/(onboarding)/connect-brokerage');
+    }
+  };
+
   const openModal = (type: ModalType) => {
     if (!profile) return;
     setActiveModal(type);
@@ -305,7 +333,7 @@ export default function SettingsScreen() {
 
           <TouchableOpacity
             style={styles.settingItem}
-            onPress={() => router.push('/(onboarding)/connect-brokerage')}
+            onPress={handleBrokerageTap}
           >
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Brokerage</Text>
