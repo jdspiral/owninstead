@@ -14,7 +14,7 @@ export const ruleCategorySchema = z.enum([
 
 export const investTypeSchema = z.enum(['fixed', 'difference']);
 
-export const rulePeriodSchema = z.enum(['weekly']);
+export const rulePeriodSchema = z.enum(['weekly', 'monthly']);
 
 export const createRuleSchema = z
   .object({

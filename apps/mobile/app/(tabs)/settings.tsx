@@ -40,6 +40,15 @@ interface SearchResult {
   universalSymbolId: string;
 }
 
+interface Evaluation {
+  id: string;
+  status: string;
+  final_invest: number;
+  rules: {
+    category: string;
+  } | null;
+}
+
 type ModalType = 'asset' | 'maxPerTrade' | 'maxPerMonth' | null;
 
 export default function SettingsScreen() {
@@ -55,6 +64,16 @@ export default function SettingsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  // Testing section state
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isTriggering, setIsTriggering] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [pendingEvaluations, setPendingEvaluations] = useState<Evaluation[]>([]);
+  const [confirmedEvaluations, setConfirmedEvaluations] = useState<Evaluation[]>([]);
+  const [pendingTotal, setPendingTotal] = useState(0);
+  const [confirmedTotal, setConfirmedTotal] = useState(0);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
   const fetchProfile = async () => {
     try {
@@ -81,15 +100,36 @@ export default function SettingsScreen() {
     }
   };
 
+  const fetchEvaluations = async () => {
+    try {
+      // Fetch pending evaluations
+      const pendingResponse = await apiClient.get('/evaluations/pending');
+      const pendingData = pendingResponse.data?.data;
+      setPendingEvaluations(pendingData?.evaluations || []);
+      setPendingTotal(pendingData?.totalPending || 0);
+
+      // Fetch confirmed evaluations
+      const confirmedResponse = await apiClient.get('/evaluations?status=confirmed');
+      const confirmedData = confirmedResponse.data?.data || [];
+      setConfirmedEvaluations(confirmedData);
+      const total = confirmedData.reduce((sum: number, e: Evaluation) => sum + (e.final_invest || 0), 0);
+      setConfirmedTotal(total);
+    } catch (error) {
+      console.error('Failed to fetch evaluations:', error);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
       fetchProfile();
+      fetchEvaluations();
     }, [])
   );
 
   const handleRefresh = () => {
     setIsRefreshing(true);
     fetchProfile();
+    fetchEvaluations();
   };
 
   const handleLogout = async () => {
@@ -137,6 +177,67 @@ export default function SettingsScreen() {
     } else {
       router.push('/(onboarding)/connect-brokerage');
     }
+  };
+
+  // Testing handlers
+  const handleSyncTransactions = async () => {
+    setIsSyncing(true);
+    try {
+      const response = await apiClient.post('/transactions/sync');
+      const data = response.data?.data;
+      setLastSyncTime(new Date());
+      Alert.alert('Sync Complete', data?.message || 'Transactions synced successfully');
+    } catch (error) {
+      console.error('Failed to sync:', error);
+      Alert.alert('Error', 'Failed to sync transactions');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleTriggerEvaluation = async () => {
+    setIsTriggering(true);
+    try {
+      await apiClient.post('/evaluations/trigger');
+      await fetchEvaluations();
+      Alert.alert('Evaluations Created', 'Check the Review tab to confirm your evaluations');
+    } catch (error) {
+      console.error('Failed to trigger:', error);
+      Alert.alert('Error', 'Failed to create evaluations');
+    } finally {
+      setIsTriggering(false);
+    }
+  };
+
+  const handleExecuteTrades = async () => {
+    if (confirmedEvaluations.length === 0) return;
+
+    Alert.alert(
+      'Execute Trades',
+      `Execute ${confirmedEvaluations.length} trade(s) for $${confirmedTotal.toFixed(2)}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Execute',
+          style: 'default',
+          onPress: async () => {
+            setIsExecuting(true);
+            try {
+              for (const evaluation of confirmedEvaluations) {
+                await apiClient.post(`/evaluations/${evaluation.id}/execute`);
+              }
+              await fetchEvaluations();
+              Alert.alert('Success', 'Trades executed successfully');
+            } catch (error) {
+              console.error('Failed to execute:', error);
+              Alert.alert('Error', 'Failed to execute trades');
+            } finally {
+              setIsExecuting(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const openModal = (type: ModalType) => {
@@ -232,21 +333,6 @@ export default function SettingsScreen() {
     const asset = SUPPORTED_ASSETS.find((a) => a.symbol === symbol);
     return asset ? `${symbol} (${asset.name})` : symbol;
   };
-
-  const renderAssetCard = (asset: ETFAsset | SearchResult, isSelected: boolean) => (
-    <TouchableOpacity
-      key={asset.symbol}
-      style={[styles.assetOption, isSelected && styles.assetOptionSelected]}
-      onPress={() => handleSelectAsset(asset.symbol)}
-    >
-      <View style={styles.assetInfo}>
-        <Text style={styles.assetSymbol}>{asset.symbol}</Text>
-        <Text style={styles.assetName}>{asset.name}</Text>
-        <Text style={styles.assetDesc}>{asset.description}</Text>
-      </View>
-      {isSelected && <Ionicons name="checkmark-circle" size={24} color="#4F46E5" />}
-    </TouchableOpacity>
-  );
 
   if (isLoading) {
     return (
@@ -349,6 +435,82 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Testing */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Testing</Text>
+
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={handleSyncTransactions}
+            disabled={isSyncing}
+          >
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Sync Transactions</Text>
+              <Text style={styles.settingValue}>
+                {lastSyncTime
+                  ? `Last synced: ${lastSyncTime.toLocaleTimeString()}`
+                  : 'Pull latest from Plaid'}
+              </Text>
+            </View>
+            {isSyncing ? (
+              <ActivityIndicator size="small" color="#4F46E5" />
+            ) : (
+              <Ionicons name="sync" size={20} color="#4F46E5" />
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={handleTriggerEvaluation}
+            disabled={isTriggering}
+          >
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Trigger Evaluation</Text>
+              <Text style={styles.settingValue}>Create evaluations manually</Text>
+            </View>
+            {isTriggering ? (
+              <ActivityIndicator size="small" color="#4F46E5" />
+            ) : (
+              <Ionicons name="play" size={20} color="#4F46E5" />
+            )}
+          </TouchableOpacity>
+
+          {pendingEvaluations.length > 0 && (
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => router.push('/review')}
+            >
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Pending Evaluations</Text>
+                <Text style={styles.settingValueWarning}>
+                  {pendingEvaluations.length} pending (${pendingTotal.toFixed(2)})
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+
+          {confirmedEvaluations.length > 0 && (
+            <TouchableOpacity
+              style={[styles.settingItem, styles.executeItem]}
+              onPress={handleExecuteTrades}
+              disabled={isExecuting}
+            >
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Execute Trades Now</Text>
+                <Text style={styles.settingValueGreen}>
+                  {confirmedEvaluations.length} confirmed (${confirmedTotal.toFixed(2)})
+                </Text>
+              </View>
+              {isExecuting ? (
+                <ActivityIndicator size="small" color="#059669" />
+              ) : (
+                <Ionicons name="checkmark-circle" size={24} color="#059669" />
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+
         {/* Account */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
@@ -429,7 +591,20 @@ export default function SettingsScreen() {
                     {(searchResults?.length || 0) === 0 && !isSearching ? (
                       <Text style={styles.noResults}>No ETFs found</Text>
                     ) : (
-                      searchResults?.map((result) => renderAssetCard(result, editValue === result.symbol))
+                      searchResults?.map((result, index) => (
+                        <TouchableOpacity
+                          key={result.universalSymbolId || `${result.symbol}-${index}`}
+                          style={[styles.assetOption, editValue === result.symbol && styles.assetOptionSelected]}
+                          onPress={() => handleSelectAsset(result.symbol)}
+                        >
+                          <View style={styles.assetInfo}>
+                            <Text style={styles.assetSymbol}>{result.symbol}</Text>
+                            <Text style={styles.assetName}>{result.name}</Text>
+                            <Text style={styles.assetDesc}>{result.description}</Text>
+                          </View>
+                          {editValue === result.symbol && <Ionicons name="checkmark-circle" size={24} color="#4F46E5" />}
+                        </TouchableOpacity>
+                      ))
                     )}
                   </View>
                 )}
@@ -439,7 +614,20 @@ export default function SettingsScreen() {
                   CURATED_ETFS.map((category) => (
                     <View key={category.id} style={styles.assetSection}>
                       <Text style={styles.assetSectionTitle}>{category.label}</Text>
-                      {category.assets.map((asset) => renderAssetCard(asset, editValue === asset.symbol))}
+                      {category.assets.map((asset, index) => (
+                        <TouchableOpacity
+                          key={`${category.id}-${asset.symbol}-${index}`}
+                          style={[styles.assetOption, editValue === asset.symbol && styles.assetOptionSelected]}
+                          onPress={() => handleSelectAsset(asset.symbol)}
+                        >
+                          <View style={styles.assetInfo}>
+                            <Text style={styles.assetSymbol}>{asset.symbol}</Text>
+                            <Text style={styles.assetName}>{asset.name}</Text>
+                            <Text style={styles.assetDesc}>{asset.description}</Text>
+                          </View>
+                          {editValue === asset.symbol && <Ionicons name="checkmark-circle" size={24} color="#4F46E5" />}
+                        </TouchableOpacity>
+                      ))}
                     </View>
                   ))}
               </ScrollView>
@@ -567,6 +755,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#DC2626',
     marginTop: 2,
+  },
+  executeItem: {
+    backgroundColor: '#F0FDF4',
   },
   upgradeButton: {
     backgroundColor: '#4F46E5',

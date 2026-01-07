@@ -85,6 +85,44 @@ export class RuleEngine {
   }
 
   /**
+   * Get the current month range (1st to last day)
+   */
+  getCurrentMonthRange(): { start: Date; end: Date } {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    end.setHours(23, 59, 59, 999);
+
+    return { start, end };
+  }
+
+  /**
+   * Get the previous month range (1st to last day)
+   */
+  getPreviousMonthRange(): { start: Date; end: Date } {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(now.getFullYear(), now.getMonth(), 0);
+    end.setHours(23, 59, 59, 999);
+
+    return { start, end };
+  }
+
+  /**
+   * Get the appropriate date range based on period type
+   */
+  getDateRangeForPeriod(period: string, type: 'current' | 'previous'): { start: Date; end: Date } {
+    if (period === 'monthly') {
+      return type === 'current' ? this.getCurrentMonthRange() : this.getPreviousMonthRange();
+    }
+    return type === 'current' ? this.getCurrentWeekRange() : this.getPreviousWeekRange();
+  }
+
+  /**
    * Evaluate a single rule against transactions
    */
   async evaluateRule(
@@ -92,7 +130,7 @@ export class RuleEngine {
     transactions: Transaction[],
     profile: Profile
   ): Promise<EvaluationResult> {
-    const { start, end } = this.getPreviousWeekRange();
+    const { start, end } = this.getDateRangeForPeriod(rule.period, 'previous');
 
     // Filter transactions to the evaluation period
     const periodTransactions = transactions.filter(tx => {
@@ -180,14 +218,16 @@ export class RuleEngine {
       return [];
     }
 
-    // Get transactions from the past week
-    const { start, end } = this.getPreviousWeekRange();
+    // Get transactions for the longest possible period (monthly)
+    // Individual rule evaluation will filter to the correct period
+    const { start: monthStart } = this.getPreviousMonthRange();
+    const { end: weekEnd } = this.getPreviousWeekRange();
     const { data: transactions } = await supabase
       .from('transactions')
       .select('*')
       .eq('user_id', userId)
-      .gte('date', start.toISOString().split('T')[0])
-      .lte('date', end.toISOString().split('T')[0]);
+      .gte('date', monthStart.toISOString().split('T')[0])
+      .lte('date', weekEnd.toISOString().split('T')[0]);
 
     // Evaluate each rule
     const results: EvaluationResult[] = [];
@@ -314,20 +354,19 @@ export class RuleEngine {
   }
 
   /**
-   * Preview current week's progress (without creating evaluations)
+   * Preview current period's progress (without creating evaluations)
    */
-  async previewCurrentWeek(userId: string): Promise<{
+  async previewCurrentPeriod(userId: string): Promise<{
     rules: Array<{
       ruleId: string;
       category: string;
+      period: string;
       targetSpend: number;
       currentSpend: number;
       projectedInvest: number;
       onTrack: boolean;
     }>;
   }> {
-    const { start } = this.getCurrentWeekRange();
-
     // Get active rules
     const { data: rules } = await supabase
       .from('rules')
@@ -339,16 +378,26 @@ export class RuleEngine {
       return { rules: [] };
     }
 
-    // Get this week's transactions
+    // Get transactions for the longest period (monthly) - individual rules will filter
+    const { start: monthStart } = this.getCurrentMonthRange();
     const { data: transactions } = await supabase
       .from('transactions')
       .select('*')
       .eq('user_id', userId)
-      .gte('date', start.toISOString().split('T')[0]);
+      .gte('date', monthStart.toISOString().split('T')[0]);
 
     const results = rules.map(rule => {
+      // Get the appropriate date range for this rule's period
+      const { start } = this.getDateRangeForPeriod(rule.period, 'current');
+
+      // Filter transactions to this rule's current period
+      const periodTransactions = (transactions || []).filter(tx => {
+        const txDate = new Date(tx.date);
+        return txDate >= start;
+      });
+
       const matching = classifier.filterMatchingTransactions(
-        transactions || [],
+        periodTransactions,
         rule
       );
       const currentSpend = matching.reduce((sum, tx) => sum + tx.amount, 0);
@@ -366,6 +415,7 @@ export class RuleEngine {
       return {
         ruleId: rule.id,
         category: rule.category,
+        period: rule.period,
         targetSpend: rule.target_spend,
         currentSpend,
         projectedInvest,
@@ -374,6 +424,27 @@ export class RuleEngine {
     });
 
     return { rules: results };
+  }
+
+  /**
+   * Preview current week's progress (legacy alias for previewCurrentPeriod)
+   * @deprecated Use previewCurrentPeriod instead
+   */
+  async previewCurrentWeek(userId: string): Promise<{
+    rules: Array<{
+      ruleId: string;
+      category: string;
+      targetSpend: number;
+      currentSpend: number;
+      projectedInvest: number;
+      onTrack: boolean;
+    }>;
+  }> {
+    const result = await this.previewCurrentPeriod(userId);
+    // Remove period field for backward compatibility
+    return {
+      rules: result.rules.map(({ period, ...rest }) => rest),
+    };
   }
 }
 

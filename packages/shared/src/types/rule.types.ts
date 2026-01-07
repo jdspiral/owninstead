@@ -11,7 +11,7 @@ export type RuleCategory =
 
 export type InvestType = 'fixed' | 'difference';
 
-export type RulePeriod = 'weekly';
+export type RulePeriod = 'weekly' | 'monthly';
 
 export interface Rule {
   id: string;

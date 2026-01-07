@@ -18,6 +18,7 @@ import { apiClient } from '@/services/api/client';
 
 type Category = (typeof RULE_CATEGORIES)[keyof typeof RULE_CATEGORIES];
 type InvestType = 'difference' | 'fixed';
+type Period = 'weekly' | 'monthly';
 
 const CATEGORIES = Object.entries(CATEGORY_LABELS)
   .filter(([key]) => key !== 'custom')
@@ -25,6 +26,7 @@ const CATEGORIES = Object.entries(CATEGORY_LABELS)
 
 export default function CreateRuleScreen() {
   const [category, setCategory] = useState<Category | null>(null);
+  const [period, setPeriod] = useState<Period>('weekly');
   const [targetSpend, setTargetSpend] = useState('');
   const [investType, setInvestType] = useState<InvestType>('difference');
   const [investAmount, setInvestAmount] = useState('');
@@ -55,7 +57,7 @@ export default function CreateRuleScreen() {
     try {
       await apiClient.post('/rules', {
         category,
-        period: 'weekly',
+        period,
         targetSpend: target,
         investType,
         investAmount: investType === 'fixed' ? parseFloat(investAmount) : null,
@@ -106,8 +108,31 @@ export default function CreateRuleScreen() {
           ))}
         </View>
 
+        {/* Period Selection */}
+        <Text style={styles.sectionTitle}>Evaluation period</Text>
+        <View style={styles.periodToggle}>
+          <TouchableOpacity
+            style={[styles.periodOption, period === 'weekly' && styles.periodOptionSelected]}
+            onPress={() => setPeriod('weekly')}
+          >
+            <Text style={[styles.periodText, period === 'weekly' && styles.periodTextSelected]}>
+              Weekly
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.periodOption, period === 'monthly' && styles.periodOptionSelected]}
+            onPress={() => setPeriod('monthly')}
+          >
+            <Text style={[styles.periodText, period === 'monthly' && styles.periodTextSelected]}>
+              Monthly
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Target Spend */}
-        <Text style={styles.sectionTitle}>Weekly spending target</Text>
+        <Text style={styles.sectionTitle}>
+          {period === 'weekly' ? 'Weekly' : 'Monthly'} spending target
+        </Text>
         <View style={styles.inputWrapper}>
           <Text style={styles.currency}>$</Text>
           <TextInput
@@ -115,10 +140,10 @@ export default function CreateRuleScreen() {
             value={targetSpend}
             onChangeText={setTargetSpend}
             keyboardType="numeric"
-            placeholder="50"
+            placeholder={period === 'weekly' ? '50' : '200'}
             placeholderTextColor="#9CA3AF"
           />
-          <Text style={styles.inputSuffix}>/week</Text>
+          <Text style={styles.inputSuffix}>/{period === 'weekly' ? 'week' : 'month'}</Text>
         </View>
         <Text style={styles.hint}>
           If you spend less than this, we'll invest the savings.
@@ -185,7 +210,7 @@ export default function CreateRuleScreen() {
             <View style={styles.streakText}>
               <Text style={styles.streakTitle}>Streak Bonus</Text>
               <Text style={styles.streakDesc}>
-                Invest 10% more for each consecutive week you beat your target
+                Invest 10% more for each consecutive {period === 'weekly' ? 'week' : 'month'} you beat your target
               </Text>
             </View>
           </View>
@@ -269,6 +294,35 @@ const styles = StyleSheet.create({
   },
   categoryLabelSelected: {
     color: '#4F46E5',
+  },
+  periodToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
+  },
+  periodOption: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 10,
+  },
+  periodOptionSelected: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  periodText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  periodTextSelected: {
+    color: '#4F46E5',
+    fontWeight: '600',
   },
   inputWrapper: {
     flexDirection: 'row',
