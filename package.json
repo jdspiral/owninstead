@@ -8,6 +8,7 @@
     "pnpm": ">=9.0.0"
   },
   "scripts": {
+    "prepare": "turbo run build --filter=@owninstead/shared",
     "dev": "turbo run dev",
     "dev:mobile": "turbo run dev --filter=@owninstead/mobile",
     "dev:backend": "turbo run dev --filter=@owninstead/backend",
